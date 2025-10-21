@@ -702,7 +702,7 @@ function Start-RepairAttempt
     {
         $processedCount++
         $percentComplete = ($processedCount / $fileCount) * 100
-        Write-Progress -Activity "Repairing" -Status "Processing: $($C.File)" -PercentComplete $percentComplete
+        Write-Progress -Activity "Repairing" -Status "Processing: $($C.File)" -PercentComplete $percentComplete -CurrentOperation "$processedCount of $fileCount"
 
         $FileToRepair = Join-Path $C.Folder $C.File
         $FullRepairOutputPath = Join-Path $SyncHash.RepairOutputPath $C.File
@@ -908,7 +908,19 @@ $SyncHash.NewResultsForm =
     }
 
     $ResultsForm = New-Object System.Windows.Forms.Form
-    $ResultsForm.Text = "Data Grid View Window"
+
+    $formTitle = switch ($SyncHash.ScanType) {
+        "RetrieveOnly"                 { "Retrieve Only Results" }
+        "CompareContainersAndExtensions" { "Container vs. Extension Mismatch Results" }
+        "GetMoovAtom"                  { "Moov Atom Scan Results" }
+        "GetSomeVideoCorruption"       { "General Corruption Scan Results" }
+        "GetSingleVideoDetails"        { "Single Video Details" }
+        "GetTwoFolders"                { "Two Folder Comparison Results" }
+        "ImportedGeneralScan"          { "Imported Scan Results" }
+        default                        { "Scan Results" }
+    }
+    $ResultsForm.Text = $formTitle
+
     $ResultsForm.Size = New-Object System.Drawing.Size(1280, 800)
     $ResultsForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
     $ResultsForm.BackColor = "Navy"
@@ -1120,6 +1132,7 @@ $ResultsForm.Add_KeyDown({
         "CompareContainersAndExtensions" { "ContainersVsExtensions.csv" }
         "GetMoovAtom"               { "MoovAtom.csv" }
         "GetSomeVideoCorruption" { "SomeVideoCorruption.csv" }
+        "GetTwoFolders"          { "TwoFolders.csv" }
         default                  { "VideoCorruptionReport.csv" }
     }
     $ExportPath.Text = Join-Path $SyncHash.ScriptRoot $defaultFileName
@@ -1620,21 +1633,24 @@ $ResultsForm.Add_KeyDown({
                         
             $ExportToCSV.Add_Click({
 
-                    $SelectedFiles = @()
-                    foreach ($row in $SyncHash.DataGridView.Rows)
+                    if ($SyncHash.ScanType -notmatch "GetSingleVideoDetails")
                     {
-                        if ($row.Cells["CheckBoxColumn"].Value)
+                        $SelectedFiles = @()
+                        foreach ($row in $SyncHash.DataGridView.Rows)
                         {
-                            $SelectedFiles += (($row.Cells["Folder"].Value) + "\" + ($row.Cells["File"].Value))
+                            if ($row.Cells["CheckBoxColumn"].Value)
+                            {
+                                $SelectedFiles += (($row.Cells["Folder"].Value) + "\" + ($row.Cells["File"].Value))
+                            }
+                        }
+                        
+                        if ($SelectedFiles.Count -eq 0)
+                        {
+                            [System.Windows.Forms.MessageBox]::Show("No items selected to export." , "Oops!", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                            return
                         }
                     }
                     
-                    if ($SelectedFiles.Count -eq 0)
-                    {
-                        [System.Windows.Forms.MessageBox]::Show("No items selected to export." , "Oops!", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
-                        return
-                    }
-
                     $visibleData = @()
 
                     # Get column headers
@@ -2232,6 +2248,11 @@ $TwoFolders.Text = "Get / Show Two Folders"
 $TwoFolders.Location = New-Object System.Drawing.Point(824, 370)
 $TwoFolders.Size = New-Object System.Drawing.Size(160, 50)
 
+$ButtonImportCsv = New-Object System.Windows.Forms.Button
+$ButtonImportCsv.Text = "Import CSV"
+$ButtonImportCsv.Location = New-Object System.Drawing.Point(824, 440)
+$ButtonImportCsv.Size = New-Object System.Drawing.Size(160, 50)
+
 $FileCounterLabel = New-Object System.Windows.Forms.Label
 $FileCounterLabel.Text = ""
 $FileCounterLabel.Location = New-Object System.Drawing.Point(824, 450)
@@ -2286,6 +2307,7 @@ $MainForm.Controls.Add($CompareCnE)
 $MainForm.Controls.Add($GeneralCorruption)
 $MainForm.Controls.Add($MoovAtom)
 $MainForm.Controls.Add($SingleFile)
+$MainForm.Controls.Add($ButtonImportCsv)
 $MainForm.Controls.Add($TwoFolders)
 $MainForm.Controls.Add($FileCounterLabel)
 $MainForm.Controls.Add($ButtonQuit)
@@ -2396,7 +2418,7 @@ $runspaceTimer.Add_Tick({
                             {
                                 # For repair, clear the box and write the new file name.
                                 # This happens only when a new Write-Progress is issued.
-                                $targetTextBox.Text = $record.StatusDescription
+                                $targetTextBox.Text = "$($record.CurrentOperation) - $($record.StatusDescription)"
                             }
                             else
                             {
@@ -3085,6 +3107,7 @@ $SyncHash.GetAfterRepairOption = {
 $MainForm.Controls | Where-Object { $_.GetType().Name -eq "Button" } | ForEach-Object {
     $_.BackColor = [System.Drawing.Color]::LawnGreen
     $_.ForeColor = [System.Drawing.Color]::Black
+    # Set a default font for all buttons
     $_.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 }
 
@@ -3134,6 +3157,47 @@ $TwoFolders.Add_Click({
         # For now, calling it directly.
         & $SyncHash.GetTwoFolders $SyncHash.ScanPath $SyncHash $SyncHash.StatusTextBox $SyncHash.ScriptRoot
     })
+
+$ButtonImportCsv.Add_Click({
+    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openFileDialog.Title = "Select CSV to Import"
+    $openFileDialog.Filter = "CSV files (*.csv)|*.csv"
+    if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        try {
+            $importedData = Import-Csv -Path $openFileDialog.FileName
+            if (-not $importedData) {
+                [System.Windows.Forms.MessageBox]::Show("The selected CSV file is empty or invalid.", "Import Error", "OK", "Error")
+                return
+            }
+
+            $headers = $importedData[0].PSObject.Properties.Name
+            
+            # Define expected headers for different scan types
+            $generalScanHeaders = "Error", "File", "Folder", "Extension", "SizeMB", "Duration", "Results"
+            $singleFileHeaders = "File", "Folder", "Extension", "SizeMB", "Duration", "Section", "Name", "Value"
+
+            $isGeneralScan = ($null -eq (Compare-Object $headers $generalScanHeaders -PassThru | Where-Object { $_ -notin $headers }))
+            $isSingleFileScan = ($null -eq (Compare-Object $headers $singleFileHeaders -PassThru | Where-Object { $_ -notin $headers }))
+
+            if ($isGeneralScan) {
+                # It's a general scan, could be any of these. We'll treat them the same for display.
+                $SyncHash.ScanType = "ImportedGeneralScan"
+                & $SyncHash.NewResultsForm -FfmpegResults $importedData
+            } elseif ($isSingleFileScan) {
+                # It's a single file detail scan
+                $SyncHash.ScanType = "GetSingleVideoDetails" # Use the original type to trigger correct column visibility
+                & $SyncHash.NewResultsForm -FfmpegResults $importedData
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("The CSV file does not have the expected column structure for any known scan type.", "Import Error", "OK", "Error")
+            }
+
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("An error occurred while importing the CSV file:`n`n$($_.Exception.Message)", "Import Error", "OK", "Error")
+        }
+    }
+})
+
+
     
 $SelectScanPath.Add_Click({
         $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
