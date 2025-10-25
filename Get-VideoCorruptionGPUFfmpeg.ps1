@@ -1578,7 +1578,7 @@ $ResultsForm.Add_KeyDown({
             }
 
             $HeaderLabel = New-Object System.Windows.Forms.Label
-            $HeaderLabel.Text = "Play Video"
+            $HeaderLabel.Text = "Play Media"
             $HeaderLabel.Location = New-Object System.Drawing.Point(10, 10) # Position at top-left
             $HeaderLabel.AutoSize = $true # Ensures the label resizes to fit the text
             $HeaderLabel.BackColor = [System.Drawing.Color]::Transparent

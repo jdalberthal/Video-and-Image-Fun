@@ -39,6 +39,7 @@ Add-Type -AssemblyName WindowsFormsIntegration, System.Xaml
 
 $ExternalButtonName = "Rotating Images/Videos Cube `n No Ffmpeg"
 $ScriptDescription = "Loops through and displays 6 or more selected images or videos on the faces of a rotating 3D cube. Uses the built-in Windows MediaElement, which may have more limited video format support."
+$RequiredExecutables = @() # No external executables needed
 
 $SyncHash = [hashtable]::Synchronized(@{}) # For passing data between runspaces
 $SyncHash.ControlsHidden = $False
@@ -135,7 +136,7 @@ $SelectAllCheckbox.Checked = $False
 $SelectFolderForm.Controls.Add($SelectAllCheckbox) # Add to your form or panel
 
 $HeaderLabel = New-Object System.Windows.Forms.Label
-$HeaderLabel.Text = "Play Video"
+$HeaderLabel.Text = "Play Media"
 $HeaderLabel.Location = New-Object System.Drawing.Point(5, 5) # Position at top-left
 $HeaderLabel.AutoSize = $True # Ensures the label resizes to fit the text
 $HeaderLabel.BackColor = [System.Drawing.Color]::Transparent
