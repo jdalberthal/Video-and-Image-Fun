@@ -39,6 +39,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Displays selected images and videos on the faces of a rotating 3D cube using FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
+- **`Show-ImagesVideosButterflyEffect.ps1`**
+  - **Description**: Creates a dynamic visual display featuring six 3D planes that move around the screen in a butterfly-like pattern, with each face independently playing media from a user-selected playlist.
+  - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
+
 - **`Show-ScrollingImagesVideosHorizontalFfmpeg.ps1`**
   - **Description**: Creates a continuous horizontal-scrolling display of selected images and videos using FFmpeg.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
@@ -79,6 +83,7 @@ Before running the scripts, ensure you have the following installed and accessib
 ### Usage
 
 1. Place all 9 `.ps1` script files in the same directory.
+1. Place all 10 `.ps1` script files in the same directory.
 2. Ensure all prerequisites are met.
 3. Run the main launcher script from a PowerShell terminal:
 
