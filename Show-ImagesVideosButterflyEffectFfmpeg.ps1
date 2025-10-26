@@ -6,7 +6,7 @@
 
     The script uses FFmpeg for robust video decoding, allowing a wide variety of video formats to be displayed in real-time. The 3D planes are animated procedurally to bounce off the edges of the screen. Users can interact by clicking on the background to randomize the rotation axis of all planes.
 .EXAMPLE
-    .\SpinningDPlane.ps1
+    .\Show-ImagesVideosButterflyEffectFfmpeg.ps1
     Launches the file selection dialog. After selection, it launches the WPF window and begins the animation.
 .NOTES
     Name:           Show-ImagesVideosButterflyEffectFfmpeg.ps1
@@ -33,7 +33,8 @@ $imageExtensions = @(".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", "
 
 #region --- Animation Functions ---
 
-function Update-RandomMotion {
+function Update-RandomMotion
+{
     param($SyncHash)
     # This function now only needs to update the rotation axis, as the storyboard handles the angle animation.
     for ($i = 1; $i -le 6; $i++)
@@ -50,7 +51,8 @@ function Update-RandomMotion {
     }
 }
 
-function Stop-MediaResources {
+function Stop-MediaResources
+{
     param(
         [System.Collections.Generic.List[System.Windows.Threading.DispatcherTimer]]$Timers,
         [System.Collections.Generic.List[System.Diagnostics.Process]]$Processes,
@@ -69,24 +71,28 @@ function Stop-MediaResources {
     $Runspaces.Clear()
 }
 
-function Get-NextPlaylistIndex {
+function Get-NextPlaylistIndex
+{
     param($SyncHash)
     $playlistCount = $SyncHash.playlist.Count
     if ($playlistCount -eq 0) { return -1 }
 
     $nextIndex = -1
     [System.Threading.Monitor]::Enter($SyncHash.SyncRoot)
-    try {
+    try
+    {
         $nextIndex = $SyncHash.FileCounter
         $SyncHash.FileCounter = ($SyncHash.FileCounter + 1) % $playlistCount
     }
-    finally {
+    finally
+    {
         [System.Threading.Monitor]::Exit($SyncHash.SyncRoot)
     }
     return $nextIndex
 }
 
-function Show-Video {
+function Show-Video
+{
     param(
         $SyncHash,
         [string]$FilePath,
@@ -111,11 +117,14 @@ function Show-Video {
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
 
-    try {
+    try
+    {
         $proc = [System.Diagnostics.Process]::Start($psi)
         $Processes.Add($proc)
     }
-    catch { # This catch block will handle if ffmpeg fails to start
+    catch
+    {
+        # This catch block will handle if ffmpeg fails to start
         Write-Error "Failed to start ffmpeg.exe. Ensure it is in your PATH. Error: $($_.Exception.Message)"
         return
     }
@@ -125,7 +134,8 @@ function Show-Video {
     $stride = $width * 3
 
     # If the process exited immediately (e.g., file not found, invalid format), handle it gracefully.
-    if ($proc.HasExited) {
+    if ($proc.HasExited)
+    {
         Write-Warning "ffmpeg process for '$FilePath' exited unexpectedly. The file may be invalid or inaccessible."
         & $OnVideoEnd -SyncHash $SyncHash -PlaneIndex $PlaneIndex
         return
@@ -133,24 +143,28 @@ function Show-Video {
 
     $ps = [PowerShell]::Create()
     $null = $ps.AddScript({
-        param($stream, $frameSize, $frameQueue)
-        while ($true) {
-            $frameBytes = New-Object byte[] $frameSize
-            $totalRead = 0
-            while ($totalRead -lt $frameSize) {
-                try {
-                    $bytesRead = $stream.Read($frameBytes, $totalRead, $frameSize - $totalRead)
-                    if ($bytesRead -le 0) {
-                        $frameQueue.Enqueue($null)
-                        return
+            param($stream, $frameSize, $frameQueue)
+            while ($true)
+            {
+                $frameBytes = New-Object byte[] $frameSize
+                $totalRead = 0
+                while ($totalRead -lt $frameSize)
+                {
+                    try
+                    {
+                        $bytesRead = $stream.Read($frameBytes, $totalRead, $frameSize - $totalRead)
+                        if ($bytesRead -le 0)
+                        {
+                            $frameQueue.Enqueue($null)
+                            return
+                        }
+                        $totalRead += $bytesRead
                     }
-                    $totalRead += $bytesRead
+                    catch { return }
                 }
-                catch { return }
+                $frameQueue.Enqueue($frameBytes)
             }
-            $frameQueue.Enqueue($frameBytes)
-        }
-    })
+        })
 
     $frameQueue = [System.Collections.Concurrent.ConcurrentQueue[byte[]]]::new()
     $null = $ps.AddParameters(@($stream, $frameSize, $frameQueue))
@@ -164,14 +178,21 @@ function Show-Video {
     $currentPlaneIndex = $PlaneIndex
     $tickScriptBlock = {
         $frame = [byte[]]$null
-        if ($frameQueue.TryDequeue([ref]$frame)) {
-            if ($frame) {
+        if ($frameQueue.TryDequeue([ref]$frame))
+        {
+            if ($frame)
+            {
                 $bitmap.WritePixels($rect, $frame, $stride, 0)
-            } else {
+            }
+            else
+            {
                 $uiTimer.Stop() # Stop this timer
                 & $OnVideoEnd -SyncHash $SyncHash -PlaneIndex $currentPlaneIndex
             }
-        } elseif ($runspaceHandle.IsCompleted -and $frameQueue.IsEmpty) { # Fallback for when the stream ends
+        }
+        elseif ($runspaceHandle.IsCompleted -and $frameQueue.IsEmpty)
+        {
+            # Fallback for when the stream ends
             $uiTimer.Stop()
             & $OnVideoEnd -SyncHash $SyncHash -PlaneIndex $currentPlaneIndex
         }
@@ -180,7 +201,8 @@ function Show-Video {
     $uiTimer.Start()
 }
 
-function Show-Image {
+function Show-Image
+{
     param(
         $SyncHash,
         [string]$FilePath,
@@ -190,11 +212,13 @@ function Show-Image {
         [System.Collections.Generic.List[System.Windows.Threading.DispatcherTimer]]$Timers,
         [int]$imageDisplaySeconds
     )
-    try {
+    try
+    {
         $bitmapImage = [Windows.Media.Imaging.BitmapImage]::new([Uri]$FilePath)
         $ImageControl.Source = $bitmapImage
     }
-    catch {
+    catch
+    {
         Write-Warning "Failed to load image: $($FilePath)."
         & $OnImageEnd -SyncHash $SyncHash -PlaneIndex $PlaneIndex
         return
@@ -214,7 +238,8 @@ function Show-Image {
     $imageTimer.Start()
 }
 
-function Start-NextMediaItemForFront {
+function Start-NextMediaItemForFront
+{
     param($SyncHash, $PlaneIndex)
     Stop-MediaResources -Timers $SyncHash."Plane${PlaneIndex}FrontTimers" -Processes $SyncHash."Plane${PlaneIndex}FrontProcesses" -Runspaces $SyncHash."Plane${PlaneIndex}FrontRunspaces"
     $playlist = $SyncHash.playlist
@@ -226,12 +251,17 @@ function Start-NextMediaItemForFront {
     $FrontImageControl = $SyncHash."Plane${PlaneIndex}FrontImageControl"
 
     # Update text if Filename overlay is active
-    if ($SyncHash.RbSelection -eq "Filename") {
+    if ($SyncHash.RbSelection -eq "Filename")
+    {
         $textBlock = $SyncHash."Plane${PlaneIndex}FrontTextBlock"
-        if ($textBlock) {
-            try {
+        if ($textBlock)
+        {
+            try
+            {
                 $textBlock.Text = (Split-Path -Path $filePath -Leaf)
-            } catch {
+            }
+            catch
+            {
                 $textBlock.Text = ""
             }
         }
@@ -239,17 +269,21 @@ function Start-NextMediaItemForFront {
 
     $extension = [System.IO.Path]::GetExtension($filePath).ToLower()
 
-    if ($SyncHash.imageExtensions -contains $extension) {
+    if ($SyncHash.imageExtensions -contains $extension)
+    {
         Show-Image -SyncHash $SyncHash -FilePath $filePath -ImageControl $FrontImageControl -PlaneIndex $PlaneIndex `
             -OnImageEnd ${function:Start-NextMediaItemForFront} -Timers $SyncHash."Plane${PlaneIndex}FrontTimers" -imageDisplaySeconds $SyncHash.imageDisplaySeconds
-    } else {
+    }
+    else
+    {
         Show-Video -SyncHash $SyncHash -FilePath $filePath -ImageControl $FrontImageControl -PlaneIndex $PlaneIndex `
             -OnVideoEnd ${function:Start-NextMediaItemForFront} -Timers $SyncHash."Plane${PlaneIndex}FrontTimers" `
             -Processes $SyncHash."Plane${PlaneIndex}FrontProcesses" -Runspaces $SyncHash."Plane${PlaneIndex}FrontRunspaces"
     }
 }
 
-function Start-NextMediaItemForBack {
+function Start-NextMediaItemForBack
+{
     param($SyncHash, $PlaneIndex)
     Stop-MediaResources -Timers $SyncHash."Plane${PlaneIndex}BackTimers" -Processes $SyncHash."Plane${PlaneIndex}BackProcesses" -Runspaces $SyncHash."Plane${PlaneIndex}BackRunspaces"
     $playlist = $SyncHash.playlist
@@ -261,12 +295,17 @@ function Start-NextMediaItemForBack {
     $BackImageControl = $SyncHash."Plane${PlaneIndex}BackImageControl"
 
     # Update text if Filename overlay is active
-    if ($SyncHash.RbSelection -eq "Filename") {
+    if ($SyncHash.RbSelection -eq "Filename")
+    {
         $textBlock = $SyncHash."Plane${PlaneIndex}BackTextBlock"
-        if ($textBlock) {
-            try {
+        if ($textBlock)
+        {
+            try
+            {
                 $textBlock.Text = (Split-Path -Path $filePath -Leaf)
-            } catch {
+            }
+            catch
+            {
                 $textBlock.Text = ""
             }
         }
@@ -274,10 +313,13 @@ function Start-NextMediaItemForBack {
 
     $extension = [System.IO.Path]::GetExtension($filePath).ToLower()
 
-    if ($SyncHash.imageExtensions -contains $extension) {
+    if ($SyncHash.imageExtensions -contains $extension)
+    {
         Show-Image -SyncHash $SyncHash -FilePath $filePath -ImageControl $BackImageControl -PlaneIndex $PlaneIndex `
             -OnImageEnd ${function:Start-NextMediaItemForBack} -Timers $SyncHash."Plane${PlaneIndex}BackTimers" -imageDisplaySeconds $SyncHash.imageDisplaySeconds
-    } else {
+    }
+    else
+    {
         Show-Video -SyncHash $SyncHash -FilePath $filePath -ImageControl $BackImageControl -PlaneIndex $PlaneIndex `
             -OnVideoEnd ${function:Start-NextMediaItemForBack} -Timers $SyncHash."Plane${PlaneIndex}BackTimers" `
             -Processes $SyncHash."Plane${PlaneIndex}BackProcesses" -Runspaces $SyncHash."Plane${PlaneIndex}BackRunspaces"
@@ -295,7 +337,8 @@ function Show-ImagesVideosButterflyEffect
     $SyncHash.imageDisplaySeconds = 10
     $SyncHash.imageExtensions = @(".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico")
 
-    function Start-ButterflyMovement {
+    function Start-ButterflyMovement
+    {
         param($WorkAreaWidth, $WorkAreaHeight)
         $edgeMargin = 150 # Increased margin to account for the plane's size during rotation
         $SyncHash.Planes = @()
@@ -328,7 +371,7 @@ function Show-ImagesVideosButterflyEffect
                     ($SyncHash.Window.FindName("translation$i")).OffsetX = $startX
                     ($SyncHash.Window.FindName("translation$i")).OffsetY = $startY
 
-                     $plane = @{
+                    $plane = @{
                         Translation = $SyncHash.Window.FindName("translation$i")
                         ModelVisual = $SyncHash.Window.FindName("planeModelVisual$i")
                         VelocityX   = (Get-Random -Minimum 0.015 -Maximum 0.035) * (Get-Random @(1, -1))
@@ -366,11 +409,13 @@ function Show-ImagesVideosButterflyEffect
                                 $predictedScreenX = $centerScreenPoint.X + ($plane.VelocityX * 200)
                                 $predictedScreenY = $centerScreenPoint.Y + ($plane.VelocityY * 200)
 
-                                if (($predictedScreenX + $radius) -ge $WorkAreaWidth -or ($predictedScreenX - $radius) -le 0) {
+                                if (($predictedScreenX + $radius) -ge $WorkAreaWidth -or ($predictedScreenX - $radius) -le 0)
+                                {
                                     $plane.VelocityX *= -1 # Reverse X velocity
                                 }
 
-                                if (($predictedScreenY + $radius) -ge $WorkAreaHeight -or ($predictedScreenY - $radius) -le 0) {
+                                if (($predictedScreenY + $radius) -ge $WorkAreaHeight -or ($predictedScreenY - $radius) -le 0)
+                                {
                                     $plane.VelocityY *= -1 # Reverse Y velocity
                                 }
 
@@ -624,11 +669,13 @@ function Show-ImagesVideosButterflyEffect
         return
     }
 
-    if ($UseTransparentEffect) {
+    if ($UseTransparentEffect)
+    {
         # Find all Viewport2DVisual3D elements. This is simpler than naming them all.
         $allViewports = @($window.FindName("mainViewport").Children | Where-Object { $_ -is [System.Windows.Media.Media3D.ModelVisual3D] } | ForEach-Object { $_.Children } | Where-Object { $_ -is [System.Windows.Media.Media3D.Viewport2DVisual3D] })
         
-        foreach ($viewport in $allViewports) {
+        foreach ($viewport in $allViewports)
+        {
             # Create a new EmissiveMaterial.
             $emissiveMaterial = New-Object System.Windows.Media.Media3D.EmissiveMaterial
             $emissiveMaterial.Brush = [System.Windows.Media.Brushes]::White # Keep the brush
@@ -661,13 +708,15 @@ function Show-ImagesVideosButterflyEffect
 
     # Store animations for pause/resume
     $SyncHash.Animations = @{}
-    foreach ($animation in $SyncHash.mainStoryboard.Children) {
+    foreach ($animation in $SyncHash.mainStoryboard.Children)
+    {
         $targetName = [System.Windows.Media.Animation.Storyboard]::GetTargetName($animation)
         $SyncHash.Animations[$targetName] = $animation
     }
     
     # Store TextBlocks for overlay
-    for ($i = 1; $i -le 6; $i++) {
+    for ($i = 1; $i -le 6; $i++)
+    {
         $SyncHash."Plane${i}FrontTextBlock" = $SyncHash.Window.FindName("textOverlayFront$i")
         $SyncHash."Plane${i}BackTextBlock" = $SyncHash.Window.FindName("textOverlayBack$i")
     }
@@ -695,31 +744,39 @@ function Show-ImagesVideosButterflyEffect
         $textBlock.FontStyle = if ($SyncHash.ItalicCheckbox.Checked) { [System.Windows.FontStyles]::Italic } else { [System.Windows.FontStyles]::Normal }
     }
 
-    switch ($SyncHash.RbSelection) {
-        "Hidden" {
+    switch ($SyncHash.RbSelection)
+    {
+        "Hidden"
+        {
             # Text is hidden by default, nothing to do.
         }
-        "Filename" {
+        "Filename"
+        {
             # Apply styles to all text blocks initially
-            for ($i = 1; $i -le 6; $i++) {
+            for ($i = 1; $i -le 6; $i++)
+            {
                 & $applyTextStyles -textBlock $SyncHash."Plane${i}FrontTextBlock"
                 & $applyTextStyles -textBlock $SyncHash."Plane${i}BackTextBlock"
             }
             # Set initial filenames if that option is selected
-            for ($i = 1; $i -le 6; $i++) {
+            for ($i = 1; $i -le 6; $i++)
+            {
                 $frontIndex = ($i - 1)
                 $backIndex = ($i - 1) + 6
-                if ($frontIndex -lt $SyncHash.playlist.Count) {
+                if ($frontIndex -lt $SyncHash.playlist.Count)
+                {
                     $filePath = $SyncHash.playlist[$frontIndex]
                     $SyncHash."Plane${i}FrontTextBlock".Text = (Split-Path -Path $filePath -Leaf)
                 }
-                if ($backIndex -lt $SyncHash.playlist.Count) {
+                if ($backIndex -lt $SyncHash.playlist.Count)
+                {
                     $filePath = $SyncHash.playlist[$backIndex]
                     $SyncHash."Plane${i}BackTextBlock".Text = (Split-Path -Path $filePath -Leaf)
                 }
             }
         }
-        "Custom" {
+        "Custom"
+        {
             $applyTextStyles = {
                 param($textBlock)
                 if (-not $textBlock) { return }
@@ -732,7 +789,8 @@ function Show-ImagesVideosButterflyEffect
             }
             $customText = $SyncHash.TextBox.Text
 
-            for ($i = 1; $i -le 6; $i++) {
+            for ($i = 1; $i -le 6; $i++)
+            {
                 $frontTextBlock = $SyncHash."Plane${i}FrontTextBlock"
                 $backTextBlock = $SyncHash."Plane${i}BackTextBlock"
                 if ($frontTextBlock) { & $applyTextStyles -textBlock $frontTextBlock; $frontTextBlock.Text = $customText }
@@ -744,7 +802,8 @@ function Show-ImagesVideosButterflyEffect
     # --- Keyboard and Button Events ---
     $SyncHash.Window.Add_KeyDown({
             param($sender, $e)
-            switch ($e.Key) {
+            switch ($e.Key)
+            {
                 'Escape' { $SyncHash.Window.Close() }
                 'P' { $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
                 'A' { $SyncHash.randomAxisButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
@@ -752,7 +811,8 @@ function Show-ImagesVideosButterflyEffect
                 'R' { $SyncHash.redoButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
                 'Left' { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
                 'Right' { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-                'F1' {
+                'F1'
+                {
                     $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
                     $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
                     $OkButton = $PopupWindow.FindName("OKButton")
@@ -763,9 +823,11 @@ function Show-ImagesVideosButterflyEffect
         })
 
     $SyncHash.pauseButton.Add_Click({
-            if ($SyncHash.Paused) {
+            if ($SyncHash.Paused)
+            {
                 # Resume: Restart animations from their last saved angle
-                foreach ($targetName in $SyncHash.Animations.Keys) {
+                foreach ($targetName in $SyncHash.Animations.Keys)
+                {
                     $rotation = $SyncHash.Window.FindName($targetName)
                     $animation = $SyncHash.Animations[$targetName]
                     $animation.From = $rotation.Angle # Start from the saved angle
@@ -774,9 +836,12 @@ function Show-ImagesVideosButterflyEffect
                 if ($SyncHash.movementTimer) { $SyncHash.movementTimer.Start() }
                 $SyncHash.pauseButton.Content = "Pause"
                 $SyncHash.Paused = $false
-            } else {
+            }
+            else
+            {
                 # Pause: Stop animations and save their current angle
-                foreach ($targetName in $SyncHash.Animations.Keys) {
+                foreach ($targetName in $SyncHash.Animations.Keys)
+                {
                     $rotation = $SyncHash.Window.FindName($targetName)
                     $currentAngle = $rotation.Angle
                     $rotation.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null) # Stop animation
@@ -794,9 +859,12 @@ function Show-ImagesVideosButterflyEffect
 
     $SyncHash.hideControlsButton.Add_Click({
             $controlsPanel = $SyncHash.Window.FindName("controlsPanel")
-            if ($controlsPanel.Visibility -eq 'Visible') {
+            if ($controlsPanel.Visibility -eq 'Visible')
+            {
                 $controlsPanel.Visibility = 'Collapsed'
-            } else {
+            }
+            else
+            {
                 $controlsPanel.Visibility = 'Visible'
             }
         })
@@ -808,7 +876,8 @@ function Show-ImagesVideosButterflyEffect
 
     $changeSpeed = {
         param($multiplier)
-        foreach ($animation in $SyncHash.mainStoryboard.Children) {
+        foreach ($animation in $SyncHash.mainStoryboard.Children)
+        {
             $currentDuration = $animation.Duration.TimeSpan.TotalSeconds
             $newDuration = $currentDuration * $multiplier
             if ($newDuration -lt 0.5) { $newDuration = 0.5 } # Prevent it from going too fast
@@ -831,7 +900,8 @@ function Show-ImagesVideosButterflyEffect
     $SyncHash.Window.Add_Closed({
             param($sender, $e)
             # Stop all timers and kill all processes/runspaces associated with each plane
-            for ($i = 1; $i -le 6; $i++) {
+            for ($i = 1; $i -le 6; $i++)
+            {
                 Stop-MediaResources -Timers $SyncHash."Plane${i}FrontTimers" -Processes $SyncHash."Plane${i}FrontProcesses" -Runspaces $SyncHash."Plane${i}FrontRunspaces"
                 Stop-MediaResources -Timers $SyncHash."Plane${i}BackTimers" -Processes $SyncHash."Plane${i}BackProcesses" -Runspaces $SyncHash."Plane${i}BackRunspaces"
             }
@@ -1182,25 +1252,27 @@ $NumericUpDown.Add_ValueChanged({ $SyncHash.SelectedFontSize = $NumericUpDown.Va
 
 $colorDialog = New-Object System.Windows.Forms.ColorDialog
 $SelectColorButton.Add_Click({
-    if ($colorDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $ColorExample.BackColor = $colorDialog.Color
-        $TextBox.ForeColor = $colorDialog.Color
-        $SyncHash.TextColor = $colorDialog.Color
-    }
-})
+        if ($colorDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+        {
+            $ColorExample.BackColor = $colorDialog.Color
+            $TextBox.ForeColor = $colorDialog.Color
+            $SyncHash.TextColor = $colorDialog.Color
+        }
+    })
 
 $FontButton.Add_Click({
-    $fontDialog = New-Object System.Windows.Forms.FontDialog
-    $fontDialog.Font = $TextBox.Font
-    if ($fontDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $TextBox.Font = $fontDialog.Font
-        $FontButton.Text = $fontDialog.Font.Name
-        $SyncHash.SelectedFont = $fontDialog.Font.Name
-        $SyncHash.ItalicCheckbox.Checked = $fontDialog.Font.Italic
-        $SyncHash.BoldCheckbox.Checked = $fontDialog.Font.Bold
-        $SyncHash.NumericUpDown.Value = [Math]::Round($fontDialog.Font.Size)
-    }
-})
+        $fontDialog = New-Object System.Windows.Forms.FontDialog
+        $fontDialog.Font = $TextBox.Font
+        if ($fontDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+        {
+            $TextBox.Font = $fontDialog.Font
+            $FontButton.Text = $fontDialog.Font.Name
+            $SyncHash.SelectedFont = $fontDialog.Font.Name
+            $SyncHash.ItalicCheckbox.Checked = $fontDialog.Font.Italic
+            $SyncHash.BoldCheckbox.Checked = $fontDialog.Font.Bold
+            $SyncHash.NumericUpDown.Value = [Math]::Round($fontDialog.Font.Size)
+        }
+    })
 
 $updateFontStyle = {
     $style = [System.Drawing.FontStyle]::Regular
@@ -1213,28 +1285,33 @@ $BoldCheckbox.Add_CheckedChanged($updateFontStyle)
 
 $SelectFolderForm.KeyPreview = $True
 $SelectFolderForm.Add_KeyDown({
-    param($Sender, $e)
-    if ($e.KeyCode -eq "F1") {
-        $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
-        $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
-        $OkButton = $PopupWindow.FindName("OKButton")
-        $OkButton.Add_Click({ $PopupWindow.Close() })
-        $PopupWindow.ShowDialog() | Out-Null
-    }
-})
+        param($Sender, $e)
+        if ($e.KeyCode -eq "F1")
+        {
+            $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
+            $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+            $OkButton = $PopupWindow.FindName("OKButton")
+            $OkButton.Add_Click({ $PopupWindow.Close() })
+            $PopupWindow.ShowDialog() | Out-Null
+        }
+    })
 
 $dataGridView.Add_RowHeaderMouseClick({
-    param($sender, $e)
-    if ($e.RowIndex -ge 0) {
-        $row = $dataGridView.Rows[$e.RowIndex]
-        $filePath = $row.Cells["FilePath"].Value
-        if ([System.IO.File]::Exists($filePath)) {
-            Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
-        } else {
-            [System.Windows.Forms.MessageBox]::Show("File not found: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        param($sender, $e)
+        if ($e.RowIndex -ge 0)
+        {
+            $row = $dataGridView.Rows[$e.RowIndex]
+            $filePath = $row.Cells["FilePath"].Value
+            if ([System.IO.File]::Exists($filePath))
+            {
+                Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
+            }
+            else
+            {
+                [System.Windows.Forms.MessageBox]::Show("File not found: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            }
         }
-    }
-})
+    })
 
 # Set initial state of font controls
 & $Event
@@ -1282,6 +1359,12 @@ $BrowseButton.Add_Click({
             {
                 $DataGridView.Rows.Add($False, $File.Name, $File.FullName) # Add a row with a checkbox (false initially), filename, and File Path
             }
+        }
+
+        foreach ($row in $DataGridView.Rows)
+        {
+            if ($row.IsNewRow) { continue }
+            $row.HeaderCell.Value = "Play"
         }
     })
 

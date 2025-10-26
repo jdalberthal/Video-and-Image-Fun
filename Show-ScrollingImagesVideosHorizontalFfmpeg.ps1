@@ -39,24 +39,30 @@ $ScriptDescription = "Creates a continuous horizontal-scrolling display of selec
 $RequiredExecutables = @("ffmpeg.exe", "ffplay.exe")
 
 # --- Dependency Check ---
-if ($RequiredExecutables) {
+if ($RequiredExecutables)
+{
     $dependencyStatus = @()
     $allDependenciesMet = $true
 
     # First, check all dependencies without writing to the console yet
-    foreach ($exe in $RequiredExecutables) {
+    foreach ($exe in $RequiredExecutables)
+    {
         # Check in the PATH and in the script's local directory ($PSScriptRoot)
         $localPath = Join-Path $PSScriptRoot $exe
-        if ((Get-Command $exe -ErrorAction SilentlyContinue) -or (Test-Path -Path $localPath)) {
+        if ((Get-Command $exe -ErrorAction SilentlyContinue) -or (Test-Path -Path $localPath))
+        {
             $dependencyStatus += [PSCustomObject]@{ Name = $exe; Status = 'Found' }
-        } else {
+        }
+        else
+        {
             $dependencyStatus += [PSCustomObject]@{ Name = $exe; Status = 'NOT FOUND' }
             $allDependenciesMet = $false
         }
     }
 
     # If any dependency is missing, then write the status of all of them
-    if (-not $allDependenciesMet) {
+    if (-not $allDependenciesMet)
+    {
         $messageLines = @(
             "One or more required executables were not found in your system's PATH. Please install them and try again.",
             "",
@@ -341,20 +347,24 @@ $FontButton.Add_Click({
             [void]$fontListBox.Items.Add($fontFamily.Name)
         }
 
-        if ($fontListBox.Items.Contains($SyncHash.SelectedFont)) {
+        if ($fontListBox.Items.Contains($SyncHash.SelectedFont))
+        {
             $fontListBox.SelectedItem = $SyncHash.SelectedFont
-        } else {
+        }
+        else
+        {
             $fontListBox.SelectedIndex = 0
         }
 
         $SelectButton.Add_Click({
-            if ($fontListBox.SelectedItem) {
-                $SyncHash.SelectedFont = $fontListBox.SelectedItem
-                $newFont = New-Object System.Drawing.Font($SyncHash.SelectedFont, $SyncHash.TextBox.Font.Size, $SyncHash.TextBox.Font.Style)
-                $SyncHash.TextBox.Font = $newFont
-            }
-            $FontPopupWindow.Close()
-        })
+                if ($fontListBox.SelectedItem)
+                {
+                    $SyncHash.SelectedFont = $fontListBox.SelectedItem
+                    $newFont = New-Object System.Drawing.Font($SyncHash.SelectedFont, $SyncHash.TextBox.Font.Size, $SyncHash.TextBox.Font.Style)
+                    $SyncHash.TextBox.Font = $newFont
+                }
+                $FontPopupWindow.Close()
+            })
         $FontPopupWindow.ShowDialog() | Out-Null
     })
 
@@ -396,17 +406,21 @@ $dataGridView.Add_CellContentClick({
     })
 
 $dataGridView.Add_RowHeaderMouseClick({
-    param($sender, $e)
-    if ($e.RowIndex -ge 0) {
-        $row = $dataGridView.Rows[$e.RowIndex]
-        $filePath = $row.Cells["FilePath"].Value
-        if ([System.IO.File]::Exists($filePath)) {
-            Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
-        } else {
-            [System.Windows.Forms.MessageBox]::Show("File not found: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        param($sender, $e)
+        if ($e.RowIndex -ge 0)
+        {
+            $row = $dataGridView.Rows[$e.RowIndex]
+            $filePath = $row.Cells["FilePath"].Value
+            if ([System.IO.File]::Exists($filePath))
+            {
+                Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
+            }
+            else
+            {
+                [System.Windows.Forms.MessageBox]::Show("File not found: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            }
         }
-    }
-})
+    })
 
 # Event handler for the Browse Folder button
 $browseButton.Add_Click({
@@ -430,9 +444,12 @@ $browseButton.Add_Click({
 
             $dataGridView.Rows.Clear()
 
-            $files = if ($recursiveCheckBox.Checked) {
+            $files = if ($recursiveCheckBox.Checked)
+            {
                 Get-ChildItem -Path $selectedPath -File -Include $AllowedExtension -Recurse
-            } else {
+            }
+            else
+            {
                 Get-ChildItem -Path "$($selectedPath)\*" -File -Include $AllowedExtension
             }
 
@@ -441,6 +458,15 @@ $browseButton.Add_Click({
                 $dataGridView.Rows.Add($false, $file.Name, $file.FullName)
             }
         }
+
+        foreach ($row in $DataGridView.Rows)
+        {
+            if ($row.IsNewRow) { continue }
+            $row.HeaderCell.Style.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleCenter # This was added in the previous request
+            $row.HeaderCell.Value = "Play"
+        }
+        # This line resizes the column to fit the content, which is the missing piece.
+        $DataGridView.AutoResizeRowHeadersWidth([System.Windows.Forms.DataGridViewRowHeadersWidthSizeMode]::AutoSizeToAllHeaders)
     })
 
 # Event handler for the Process Selected Files button
@@ -489,7 +515,8 @@ $PlayButton.Add_Click({
 
                 $loadingForm.Show()
 
-                while (-not $SyncHash.CubeReady) {
+                while (-not $SyncHash.CubeReady)
+                {
                     [System.Windows.Forms.Application]::DoEvents()
                     Start-Sleep -Milliseconds 50
                 }
@@ -608,7 +635,8 @@ $PlayButton.Add_Click({
             $ReverseButton = $Window.FindName("ReverseButton")
             $PauseButton = $Window.FindName("PauseButton")
 
-            if ($TransparentCheckbox.Checked) {
+            if ($TransparentCheckbox.Checked)
+            {
                 $imagePanel.Opacity = 0.7
             }
 
@@ -629,35 +657,36 @@ $PlayButton.Add_Click({
                 param($ErrorElement, [string]$Reason = "Unknown Error")
 
                 $SyncHash.Window.Dispatcher.Invoke([action]{
-                    $playerState = $SyncHash.PlayerState[$ErrorElement.Name] # ErrorElement is the Grid
-                    if ($playerState.IsFailed) { return } 
-                    $playerState.IsFailed = $true
+                        $playerState = $SyncHash.PlayerState[$ErrorElement.Name] # ErrorElement is the Grid
+                        if ($playerState.IsFailed) { return } 
+                        $playerState.IsFailed = $true
 
-                    $fileName = if ($playerState.CurrentFile) { [System.IO.Path]::GetFileName($playerState.CurrentFile) } else { "an unknown media file" }
-                    $errorText = "Error: $($fileName)`n$Reason"
+                        $fileName = if ($playerState.CurrentFile) { [System.IO.Path]::GetFileName($playerState.CurrentFile) } else { "an unknown media file" }
+                        $errorText = "Error: $($fileName)`n$Reason"
 
-                    $errorTextBlock = $ErrorElement.Children | Where-Object { $_.Name -like "errorTextBlock*" }
+                        $errorTextBlock = $ErrorElement.Children | Where-Object { $_.Name -like "errorTextBlock*" }
                     
-                    if ($errorTextBlock) {
-                        $errorTextBlock.Text = $errorText
-                        $errorTextBlock.Visibility = "Visible"
-                    }
+                        if ($errorTextBlock)
+                        {
+                            $errorTextBlock.Text = $errorText
+                            $errorTextBlock.Visibility = "Visible"
+                        }
 
-                    if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
+                        if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
 
-                    $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer
-                    $recoveryTimer.Interval = [TimeSpan]::FromSeconds(10)
-                    $recoveryTimer.Tag = $ErrorElement 
+                        $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer
+                        $recoveryTimer.Interval = [TimeSpan]::FromSeconds(10)
+                        $recoveryTimer.Tag = $ErrorElement 
 
-                    $recoveryTick = {
-                        $timer = $args[0]; $failedElement = $timer.Tag; $timer.Stop()
-                        $SyncHash.PlayerState[$failedElement.Name].IsFailed = $false
-                        & $SyncHash.MediaEndedHandler -Sender $failedElement -e $null -IsRecovery
-                    }
-                    $recoveryTimer.Add_Tick($recoveryTick)
-                    $playerState.RecoveryTimer = $recoveryTimer
-                    $recoveryTimer.Start()
-                })
+                        $recoveryTick = {
+                            $timer = $args[0]; $failedElement = $timer.Tag; $timer.Stop()
+                            $SyncHash.PlayerState[$failedElement.Name].IsFailed = $false
+                            & $SyncHash.MediaEndedHandler -Sender $failedElement -e $null -IsRecovery
+                        }
+                        $recoveryTimer.Add_Tick($recoveryTick)
+                        $playerState.RecoveryTimer = $recoveryTimer
+                        $recoveryTimer.Start()
+                    })
             }
 
             $MediaEndedHandler = {
@@ -670,21 +699,25 @@ $PlayButton.Add_Click({
                 $playerState = $SyncHash.PlayerState[$FinishedElement.Name]
                 if ($playerState.IsFailed) { return }
 
-                if (-not $IsRecovery) {
+                if (-not $IsRecovery)
+                {
                     $playerState.PlaybackStopwatch.Stop()
                     $elapsedMilliseconds = $playerState.PlaybackStopwatch.Elapsed.TotalMilliseconds
-                    if (($elapsedMilliseconds -lt 2000) -and (-not $playerState.IsImage)) {
+                    if (($elapsedMilliseconds -lt 2000) -and (-not $playerState.IsImage))
+                    {
                         # This handles cases where ffmpeg starts but fails to produce a valid stream
                         & $SyncHash.HandleMediaFailure -ErrorElement $FinishedElement -Reason "Playback failed or ended instantly."
                         return
                     }
                 }
 
-                if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited) {
+                if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited)
+                {
                     $playerState.FfmpegProcess.Kill()
                     $playerState.FfmpegTimer.Stop()
                 }
-                if ($playerState.FfmpegEventId) {
+                if ($playerState.FfmpegEventId)
+                {
                     # Unregister the event handler to prevent conflicts when the slot is reused
                     Unregister-Event -SourceIdentifier $playerState.FfmpegEventId -ErrorAction SilentlyContinue
                     $playerState.FfmpegEventId = $null
@@ -694,7 +727,8 @@ $PlayButton.Add_Click({
                 $errorTextBlock = $FinishedElement.Children | Where-Object { $_.Name -like "errorTextBlock*" }
                 if ($errorTextBlock) { $errorTextBlock.Visibility = "Collapsed" }
 
-                if($SyncHash.CurrentIndex -ge $SyncHash.VideoUris.Count) {
+                if($SyncHash.CurrentIndex -ge $SyncHash.VideoUris.Count)
+                {
                     $SyncHash.CurrentIndex = 0
                 }
 
@@ -710,17 +744,19 @@ $PlayButton.Add_Click({
 
                 $playerState.IsImage = $isImage
 
-                if ($isImage) {
+                if ($isImage)
+                {
                     $imageElement.Visibility = "Visible"
                     
                     $bitmapImage = New-Object System.Windows.Media.Imaging.BitmapImage
                     $bitmapImage.BeginInit()
                     $bitmapImage.add_DownloadCompleted({
-                        if ($imageElement.Source.PixelHeight -gt 0) {
-                            $aspectRatio = $imageElement.Source.PixelWidth / $imageElement.Source.PixelHeight
-                            $FinishedElement.Width = $FinishedElement.Height * $aspectRatio
-                        }
-                    })
+                            if ($imageElement.Source.PixelHeight -gt 0)
+                            {
+                                $aspectRatio = $imageElement.Source.PixelWidth / $imageElement.Source.PixelHeight
+                                $FinishedElement.Width = $FinishedElement.Height * $aspectRatio
+                            }
+                        })
                     $bitmapImage.UriSource = $NewUri
                     $bitmapImage.EndInit()
                     $imageElement.Source = $bitmapImage
@@ -735,14 +771,18 @@ $PlayButton.Add_Click({
                     }
                     $playerState.ImageTimer.Add_Tick($tickScriptBlock)
                     $playerState.ImageTimer.Start()
-                } else {
+                }
+                else
+                {
                     $imageElement.Visibility = "Collapsed"
                     & $SyncHash.StartFfmpegStream -Grid $FinishedElement -FilePath $NewUri.LocalPath
                 }
 
-                switch ($SyncHash.RbSelection) {
+                switch ($SyncHash.RbSelection)
+                {
                     "Hidden" { $mediaTextBlock.Visibility = "Collapsed" }
-                    "Filename" {
+                    "Filename"
+                    {
                         $mediaTextBlock.Text = $NewUri.Segments[-1]
                         $mediaTextBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B))
                         $mediaTextBlock.FontSize = $SyncHash.SelectedFontSize
@@ -751,7 +791,8 @@ $PlayButton.Add_Click({
                         $mediaTextBlock.FontWeight = if ($SyncHash.BoldCheckbox.Checked) { [System.Windows.FontWeights]::Bold } else { [System.Windows.FontWeights]::Normal }
                         $mediaTextBlock.Visibility = "Visible"
                     }
-                    "Custom" {
+                    "Custom"
+                    {
                         $mediaTextBlock.Text = $SyncHash.TextBox.Text
                         $mediaTextBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B))
                         $mediaTextBlock.FontSize = $SyncHash.SelectedFontSize
@@ -797,7 +838,8 @@ $PlayButton.Add_Click({
                 $sourceIdentifier = "ffmpegExit_$($Grid.Name)"
                 $proc.EnableRaisingEvents = $true
                 $exitAction = {
-                    if ($proc.ExitCode -ne 0) {
+                    if ($proc.ExitCode -ne 0)
+                    {
                         & $SyncHash.HandleMediaFailure -ErrorElement $Grid -Reason "ffmpeg process exited with code $($proc.ExitCode)."
                     }
                 }
@@ -813,16 +855,20 @@ $PlayButton.Add_Click({
 
                 $tickScriptBlock = {
                     $total = 0
-                    while ($total -lt $frameSize) {
+                    while ($total -lt $frameSize)
+                    {
                         $n = $stream.Read($bytes, $total, $frameSize - $total)
-                        if ($n -le 0) { # End of stream
+                        if ($n -le 0)
+                        {
+                            # End of stream
                             $timer.Stop()
                             & $SyncHash.MediaEndedHandler -Sender $Grid -e $null
                             return 
                         }
                         $total += $n
                     }
-                    if ($total -eq $frameSize) {
+                    if ($total -eq $frameSize)
+                    {
                         $bitmap.Lock()
                         $bitmap.WritePixels($rect, $bytes, $stride, 0)
                         $bitmap.Unlock()
@@ -870,10 +916,10 @@ $PlayButton.Add_Click({
                 $grid.Children.Add($errorTextBlock)
 
                 $SyncHash.PlayerState[$grid.Name] = @{
-                    IsImage = $isImage
-                    IsFailed = $false
-                    ImageTimer = $null
-                    RecoveryTimer = $null
+                    IsImage           = $isImage
+                    IsFailed          = $false
+                    ImageTimer        = $null
+                    RecoveryTimer     = $null
                     FfmpegProcess     = $null
                     FfmpegTimer       = $null
                     CurrentFile       = $file
@@ -881,15 +927,17 @@ $PlayButton.Add_Click({
                     PlaybackStopwatch = New-Object System.Diagnostics.Stopwatch
                 }
 
-                if ($isImage) {
+                if ($isImage)
+                {
                     $bitmapImage = New-Object System.Windows.Media.Imaging.BitmapImage
                     $bitmapImage.BeginInit()
                     $bitmapImage.add_DownloadCompleted({
-                        if ($imageElement.Source.PixelHeight -gt 0) {
-                            $aspectRatio = $imageElement.Source.PixelWidth / $imageElement.Source.PixelHeight
-                            $grid.Width = $grid.Height * $aspectRatio
-                        }
-                    })
+                            if ($imageElement.Source.PixelHeight -gt 0)
+                            {
+                                $aspectRatio = $imageElement.Source.PixelWidth / $imageElement.Source.PixelHeight
+                                $grid.Width = $grid.Height * $aspectRatio
+                            }
+                        })
                     $bitmapImage.UriSource = $uri
                     $bitmapImage.EndInit()
                     $imageElement.Source = $bitmapImage
@@ -904,14 +952,18 @@ $PlayButton.Add_Click({
                     }
                     $playerState.ImageTimer.Add_Tick($tickScriptBlock)
                     $playerState.ImageTimer.Start()
-                } else {
+                }
+                else
+                {
                     $imageElement.Visibility = "Collapsed"
                     & $SyncHash.StartFfmpegStream -Grid $grid -FilePath $file
                 }
 
-                switch ($SyncHash.RbSelection) {
+                switch ($SyncHash.RbSelection)
+                {
                     "Hidden" { $mediaTextBlock.Visibility = "Collapsed" }
-                    "Filename" {
+                    "Filename"
+                    {
                         $mediaTextBlock.Text = $uri.Segments[-1]
                         $mediaTextBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B))
                         $mediaTextBlock.FontSize = $SyncHash.SelectedFontSize
@@ -920,7 +972,8 @@ $PlayButton.Add_Click({
                         $mediaTextBlock.FontWeight = if ($SyncHash.BoldCheckbox.Checked) { [System.Windows.FontWeights]::Bold } else { [System.Windows.FontWeights]::Normal }
                         $mediaTextBlock.Visibility = "Visible"
                     }
-                    "Custom" {
+                    "Custom"
+                    {
                         $mediaTextBlock.Text = $SyncHash.TextBox.Text
                         $mediaTextBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B))
                         $mediaTextBlock.FontSize = $SyncHash.SelectedFontSize
@@ -973,13 +1026,15 @@ $PlayButton.Add_Click({
             
             $from = 0
             $totalWidth = 0
-            foreach($child in $imagePanel.Children) {
+            foreach($child in $imagePanel.Children)
+            {
                 $totalWidth += $child.Width + $child.Margin.Left + $child.Margin.Right
             }
-            $to = -$totalWidth
+            $to = - $totalWidth
 
             # Store speed for dynamic duration calculation on reverse
-            if ($totalWidth -gt 0) {
+            if ($totalWidth -gt 0)
+            {
                 # Store the calculated speed in the synchronized hashtable
                 $SyncHash.AnimationSpeed = $duration.TotalSeconds / $totalWidth
             }
@@ -1006,11 +1061,14 @@ $PlayButton.Add_Click({
             
             # Create a reusable function to toggle pause/resume
             $TogglePause = {
-                if($SyncHash.Paused) {
+                if($SyncHash.Paused)
+                {
                     $SyncHash.Storyboard.Resume($imagePanel)
                     $SyncHash.Paused = $false
                     $PauseButton.Content = "Pause"
-                } else {
+                }
+                else
+                {
                     $SyncHash.Storyboard.Pause($imagePanel)
                     $SyncHash.Paused = $true
                     $PauseButton.Content = "Resume"
@@ -1030,7 +1088,8 @@ $PlayButton.Add_Click({
                 $currentX = $transform.X
 
                 $totalWidth = 0
-                foreach($child in $imagePanel.Children) {
+                foreach($child in $imagePanel.Children)
+                {
                     $totalWidth += $child.ActualWidth + $child.Margin.Left + $child.Margin.Right
                 }
                 if ($totalWidth -eq 0) { return } # Safety check
@@ -1038,7 +1097,7 @@ $PlayButton.Add_Click({
                 $SyncHash.IsReversed = -not $SyncHash.IsReversed
 
                 $myAnimation.From = $currentX
-                $myAnimation.To = if ($SyncHash.IsReversed) { 0 } else { -$totalWidth }
+                $myAnimation.To = if ($SyncHash.IsReversed) { 0 } else { - $totalWidth }
 
                 # Recalculate the duration for the new path to maintain consistent speed
                 $totalDistance = [Math]::Abs($myAnimation.To - $myAnimation.From)
@@ -1102,20 +1161,23 @@ $PlayButton.Add_Click({
                 })
             
             $Window.Add_Closed({
-                foreach($playerState in $SyncHash.PlayerState.Values) {
-                    if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
-                    if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
-                    if ($playerState.FfmpegTimer) { $playerState.FfmpegTimer.Stop() }
-                    if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited) {
-                        $playerState.FfmpegProcess.Kill()
+                    foreach($playerState in $SyncHash.PlayerState.Values)
+                    {
+                        if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
+                        if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
+                        if ($playerState.FfmpegTimer) { $playerState.FfmpegTimer.Stop() }
+                        if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited)
+                        {
+                            $playerState.FfmpegProcess.Kill()
+                        }
+                        if ($playerState.FfmpegEventId)
+                        {
+                            Unregister-Event -SourceIdentifier $playerState.FfmpegEventId -ErrorAction SilentlyContinue
+                        }
                     }
-                    if ($playerState.FfmpegEventId) {
-                        Unregister-Event -SourceIdentifier $playerState.FfmpegEventId -ErrorAction SilentlyContinue
-                    }
-                }
-                # Clear the synchronized hashtable to ensure a clean state for the next run
-                $SyncHash.Clear()
-            })
+                    # Clear the synchronized hashtable to ensure a clean state for the next run
+                    $SyncHash.Clear()
+                })
 
             $SelectFolderForm.Hide()
 

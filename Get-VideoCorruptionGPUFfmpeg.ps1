@@ -19,6 +19,7 @@
       detected, such as re-muxing, re-encoding, or fixing the moov atom position.
     - Detailed Analysis: Provides a deep-dive view of a single video's format, streams, and metadata.
     - Multi-Video Player: Allows for simultaneous playback of up to four videos for comparison.
+    - Import/Export: Scan results can be exported to CSV and imported later for review.
 
 .EXAMPLE
     PS C:\> .\Get-VideoCorruptionGPUFfmpeg.ps1

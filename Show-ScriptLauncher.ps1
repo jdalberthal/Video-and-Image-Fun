@@ -41,7 +41,7 @@ $ScriptName = $MyInvocation.MyCommand.Name
 # --- Form Definition ---
 $mainForm = New-Object System.Windows.Forms.Form -Property @{
     Text          = "PowerShell Script Launcher"
-    Size          = New-Object System.Drawing.Size(800, 600)
+    Size          = New-Object System.Drawing.Size(850, 800)
     StartPosition = "CenterScreen"
 }
 
@@ -51,7 +51,8 @@ $mainForm = New-Object System.Windows.Forms.Form -Property @{
 $mainTableLayoutPanel = New-Object System.Windows.Forms.TableLayoutPanel -Property @{
     Dock        = [System.Windows.Forms.DockStyle]::Fill
     ColumnCount = 1
-    AutoScroll  = $true
+    Padding     = New-Object System.Windows.Forms.Padding(0, 40, 0, 0) # Add padding to the top
+    AutoScroll  = $false # Disable AutoScroll on the panel itself
 }
 
 # Help Button
@@ -72,14 +73,6 @@ function Create-ScriptButtons {
         [string]$ScriptName
     )
 
-    # This hashtable will store the FlowLayoutPanels for each dependency group.
-    $groupPanels = @{}
-
-    # Clear any previously created groups from the main layout.
-    $LayoutTable.Controls.Clear()
-    $LayoutTable.RowStyles.Clear()
-    $LayoutTable.RowCount = 0
-
     # Find all .ps1 files in the selected folder
     $scripts = Get-ChildItem -Path $FolderPath -Filter "*.ps1" -ErrorAction SilentlyContinue
 
@@ -88,7 +81,56 @@ function Create-ScriptButtons {
         return
     }
 
-    # Create a button for each script
+    # --- Refactored Grouping Logic ---
+
+    # 1. First Pass: Identify all unique dependency groups to determine the row count.
+    $allDependencyKeys = [System.Collections.Generic.List[string]]::new()
+    foreach ($script in $scripts) {
+        if ($script.Name -eq $ScriptName) { continue }
+
+        $scriptContent = ""
+        try { $scriptContent = [System.IO.File]::ReadAllText($script.FullName) } catch { }
+
+        $scriptDependencies = [System.Collections.Generic.List[string]]::new()
+        if ($script.Name -match "MediaElement") { $scriptDependencies.Add("MediaElement") }
+        if ($scriptContent -match '\$RequiredExecutables\s*=\s*@\((.*?)\)') {
+            $executablesString = $matches[1].Trim()
+            if (-not [string]::IsNullOrWhiteSpace($executablesString)) {
+                $requiredExecutables = [string[]]($executablesString -split ',\s*' | ForEach-Object { $_.Trim('"'' ') })
+                $scriptDependencies.AddRange($requiredExecutables)
+            }
+        }
+        $dependencyKey = if ($scriptDependencies.Count -gt 0) { ($scriptDependencies | Sort-Object) -join ', ' } else { "No Dependencies" }
+        if (-not $allDependencyKeys.Contains($dependencyKey)) {
+            $allDependencyKeys.Add($dependencyKey)
+        }
+    }
+
+    # 2. Setup the TableLayoutPanel with equally-sized percentage rows.
+    $LayoutTable.Controls.Clear()
+    $LayoutTable.RowStyles.Clear()
+    $LayoutTable.RowCount = $allDependencyKeys.Count
+    $rowPercentage = if ($allDependencyKeys.Count -gt 0) { 100 / $allDependencyKeys.Count } else { 100 }
+
+    $groupPanels = @{}
+    for ($i = 0; $i -lt $allDependencyKeys.Count; $i++) {
+        $dependencyKey = $allDependencyKeys[$i]
+        $LayoutTable.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, $rowPercentage))) | Out-Null
+
+        $groupBox = New-Object System.Windows.Forms.GroupBox -Property @{
+            Text = "Dependencies: $dependencyKey"; Dock = [System.Windows.Forms.DockStyle]::Fill
+            Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+        }
+        $flowLayoutPanel = New-Object System.Windows.Forms.FlowLayoutPanel -Property @{
+            Dock = [System.Windows.Forms.DockStyle]::Fill; AutoScroll = $true; Padding = New-Object System.Windows.Forms.Padding(10)
+        }
+        $groupBox.Controls.Add($flowLayoutPanel)
+        
+        $LayoutTable.Controls.Add($groupBox, 0, $i)
+        $groupPanels[$dependencyKey] = $flowLayoutPanel
+    }
+
+    # 3. Second Pass: Create and place the buttons in their respective groups.
     foreach ($script in $scripts) {
         # Skip the launcher script itself
         if ($script.Name -eq $ScriptName) {
@@ -128,16 +170,19 @@ function Create-ScriptButtons {
         if ($scriptContent -match '\$RequiredExecutables\s*=\s*@\((.*?)\)') {
             # Extract the array content and split it into individual executable names
             $executablesString = $matches[1].Trim()
+            # Only process if the string of executables is not empty.
+            if (-not [string]::IsNullOrWhiteSpace($executablesString)) {
                 $requiredExecutables = [string[]]($executablesString -split ',\s*' | ForEach-Object { $_.Trim('"'' ') })
-            $scriptDependencies.AddRange($requiredExecutables)
+                $scriptDependencies.AddRange($requiredExecutables)
 
-            # Check if each required executable is available in the PATH
-            foreach ($exe in $requiredExecutables) {
-                # Check in the PATH and in the script's local directory
-                $localPath = Join-Path $script.DirectoryName $exe
-                if (-not (Get-Command $exe -ErrorAction SilentlyContinue) -and -not (Test-Path -Path $localPath)) {
-                    $dependenciesMet = $false
-                    $missingDependencies.Add($exe)
+                # Check if each required executable is available in the PATH
+                foreach ($exe in $requiredExecutables) {
+                    # Check in the PATH and in the script's local directory
+                    $localPath = Join-Path $script.DirectoryName $exe
+                    if (-not (Get-Command $exe -ErrorAction SilentlyContinue) -and -not (Test-Path -Path $localPath)) {
+                        $dependenciesMet = $false
+                        $missingDependencies.Add($exe)
+                    }
                 }
             }
         }
@@ -148,23 +193,6 @@ function Create-ScriptButtons {
             ($scriptDependencies | Sort-Object) -join ', '
         } else {
             "No Dependencies"
-        }
-
-        # Check if a panel for this group already exists. If not, create it.
-        if (-not $groupPanels.ContainsKey($dependencyKey)) {
-            $LayoutTable.RowCount++
-            $LayoutTable.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize))) | Out-Null
-
-            $groupBox = New-Object System.Windows.Forms.GroupBox -Property @{
-                Text = "Dependencies: $dependencyKey"
-                Dock = [System.Windows.Forms.DockStyle]::Fill
-                Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-            }
-            $flowLayoutPanel = New-Object System.Windows.Forms.FlowLayoutPanel -Property @{ Dock = [System.Windows.Forms.DockStyle]::Fill; AutoScroll = $true; Padding = New-Object System.Windows.Forms.Padding(10) }
-            $groupBox.Controls.Add($flowLayoutPanel)
-            
-            $LayoutTable.Controls.Add($groupBox, 0, ($LayoutTable.RowCount - 1))
-            $groupPanels[$dependencyKey] = $flowLayoutPanel
         }
         $targetPanel = $groupPanels[$dependencyKey]
 
