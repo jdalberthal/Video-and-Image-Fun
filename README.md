@@ -14,8 +14,8 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 - **3D Media Faceted Sphere**: Display images and videos on a rotating 3D faceted sphere.
 - **3D Media Sphere**: Display images and videos on a rotating 3D sphere.
 - **3D Media Cube**: Display images or videos on the faces of an interactive, rotating 3D cube.
-- **Continuous Media Scroller**: Create a seamless horizontal or vertical scrolling display of images and videos.
-- **Flexible Video Playback**: Scripts are available in two flavors: one using **FFmpeg** for broad format support and another using the native Windows **MediaElement** for simplicity.
+- **Continuous Media Scroller**: Create a seamless, gapless horizontal or vertical scrolling display of images and videos.
+- **Flexible Video Playback**: Most viewer scripts are available in two flavors: one using **FFmpeg** for broad format support and another using the native Windows **MediaElement** for simplicity.
 - **User-Friendly GUIs**: All tools are wrapped in intuitive graphical interfaces built with Windows Forms and WPF.
 
 ## The Scripts
@@ -38,7 +38,7 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 
 ### Media Viewers (FFmpeg-Based)
 
-- **`Show-RotatingImageVideoCubeFfmpeg.ps1`**
+- **`Show-RotatingImagesVideosCubeFfmpeg.ps1`**
   - **Description**: Displays selected images and videos on the faces of a rotating 3D cube using FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
@@ -59,7 +59,7 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
 - **`Show-ImagesVideosFacetedSphereFfmpeg.ps1`**
-  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere using FFmpeg for broad format support.
+  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere, with each facet playing media independently from the playlist. Uses FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
 ### Media Viewers (MediaElement-Based)
@@ -84,8 +84,12 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Displays selected images and videos on a rotating 3D sphere using the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
-- **`Show-ImagesVideosFacetedSphereMediaElement.ps1`**
-  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere using the native Windows MediaElement.
+- **`Show-ImagesVideosFacetedSphereMediaElementSingle.ps1`**
+  - **Description**: Displays a single playlist of media on all facets of a rotating 3D faceted sphere using the native Windows MediaElement.
+  - **Dependencies**: PowerShell with .NET/WPF access.
+
+- **`Show-ImagesVideosFacetedSphereMediaElementMulti.ps1`**
+  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere, with each facet playing media independently from the playlist. Uses the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 ## Getting Started
