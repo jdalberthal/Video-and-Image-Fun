@@ -15,6 +15,7 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 - **3D Media Sphere**: Display images and videos on a rotating 3D sphere.
 - **3D Media Cube**: Display images or videos on the faces of an interactive, rotating 3D cube.
 - **Continuous Media Scroller**: Create a seamless, gapless horizontal or vertical scrolling display of images and videos.
+- **3D Floating Cubes**: Display media on multiple, independently moving and rotating 3D cubes.
 - **Flexible Video Playback**: Most viewer scripts are available in two flavors: one using **FFmpeg** for broad format support and another using the native Windows **MediaElement** for simplicity.
 - **User-Friendly GUIs**: All tools are wrapped in intuitive graphical interfaces built with Windows Forms and WPF.
 
@@ -46,6 +47,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Creates a dynamic visual display featuring six 3D planes that move around the screen in a butterfly-like pattern, with each face independently playing media from a user-selected playlist.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
+- **`Show-FloatingCubesFfmpeg.ps1`**
+  - **Description**: Displays media on multiple, independently moving and rotating 3D cubes using FFmpeg for broad format support.
+  - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
+
 - **`Show-ScrollingImagesVideosHorizontalFfmpeg.ps1`**
   - **Description**: Creates a continuous horizontal-scrolling display of selected images and videos using FFmpeg.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
@@ -70,6 +75,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 
 - **`Show-ImagesVideosButterflyEffectMediaElement.ps1`**
   - **Description**: Creates a dynamic visual display featuring six 3D planes that move around the screen in a butterfly-like pattern, with each face independently playing media from a user-selected playlist.
+  - **Dependencies**: PowerShell with .NET/WPF access.
+
+- **`Show-FloatingCubesMediaElement.ps1`**
+  - **Description**: Displays media on multiple, independently moving and rotating 3D cubes using the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 - **`Show-ScrollingImagesVideosHorizontalMediaElement.ps1`**
