@@ -326,29 +326,16 @@ while ($true) {
         }
     })
 
-    [xml]$VideoXaml = @"
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Preview Video - Click to Pause/Resume" Height="450" Width="800"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" SizeToContent="Manual"
-        WindowState="Normal" WindowStyle="ToolWindow" Background="Black">
-    <Grid x:Name="TheGrid">
-        <MediaElement x:Name="MediaPlayer" LoadedBehavior="Manual" UnloadedBehavior="Stop" />
-    </Grid>
-</Window>
-"@
-
     $DataGridView.Add_RowHeaderMouseClick({
         $rowIndex = $_.RowIndex
         if ($rowIndex -lt 0) { return }
         $row = $DataGridView.Rows[$rowIndex]
         $videoPath = ($row.Cells["FilePath"].Value)
-
-        $isPreviewPaused = $false
-        $VideoReader = (New-Object System.Xml.XmlNodeReader $VideoXaml)
-        $VideoWindow = [Windows.Markup.XamlReader]::Load($VideoReader)
-
-    Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -autoexit -i `"$videoPath`""
+        if ([System.IO.File]::Exists($videoPath)) {
+            Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -loop 0 -i `"$videoPath`"" -NoNewWindow
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("File not found: $videoPath", "Error", "OK", "Error")
+        }
     })
 
     $null = $SelectForm.ShowDialog()

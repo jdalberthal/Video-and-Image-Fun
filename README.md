@@ -75,6 +75,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Displays media on the front and back of 8 rotating 3D pie slices. Uses FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`.
 
+- **`Show-ImagesVideosWagonWheelFfmpeg.ps1`**
+  - **Description**: Displays media on the outer curved faces of rotating 3D wagon wheel slices. Each slice plays media independently. Uses FFmpeg for broad format support.
+  - **Dependencies**: `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe`.
+
 ### Media Viewers (MediaElement-Based)
 
 - **`Show-RotatingImagesVideosCubeMediaElement.ps1`**
@@ -111,6 +115,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 
 - **`Show-ImagesVideosPie3DMediaElement.ps1`**
   - **Description**: Displays media on the front and back of 8 rotating 3D pie slices using the native Windows MediaElement.
+  - **Dependencies**: PowerShell with .NET/WPF access.
+
+- **`Show-ImagesVideosWagonWheelMediaElement.ps1`**
+  - **Description**: Displays media on the outer curved faces of rotating 3D wagon wheel slices. Each slice plays media independently. Uses the built-in Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 ## Getting Started
