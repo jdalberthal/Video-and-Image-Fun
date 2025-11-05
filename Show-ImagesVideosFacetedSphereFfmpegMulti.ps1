@@ -1,12 +1,13 @@
 <#
 .SYNOPSIS
-    Displays a playlist of media on an interactive, rotating, faceted 3D sphere using FFmpeg.
+    Displays multiple media files simultaneously, one on each facet of an interactive, rotating 3D sphere, using FFmpeg.
 .DESCRIPTION
-    This script creates a WPF window and renders a 3D sphere. The sphere's geometry is
-    programmatically generated with flat facets. It then prompts the user to select an image
-    or video file, which is displayed on each facet of the sphere.
+    This script creates a WPF window and renders a 3D sphere with programmatically generated
+    flat facets. It prompts the user to select a playlist of image and video files. The script
+    then displays multiple media files from the playlist simultaneously, with each facet of the
+    sphere showing a different image or video.
 
-    The sphere has a continuous rotation animation and includes UI controls to pause, change speed, and randomize the rotation.
+    The sphere has a continuous rotation animation and includes UI controls to pause, change speed, and randomize the rotation axis.
 
     This version uses FFmpeg for video playback, providing support for a wide range of video formats
     without relying on system-installed codecs.
@@ -21,16 +22,16 @@
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com
     GitHub:         https://github.com/jdalberthal
-    Dependencies:   Requires PowerShell with .NET/WPF access. Video playback is limited to formats
-                    supported by the built-in Windows MediaElement.
+    Dependencies:   Requires PowerShell with .NET/WPF access. The following executables must be in
+                    the system's PATH or in the same directory as the script: `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe`.
 #>
 
 Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms, System.Drawing, System.ComponentModel
 
 # --- Script Metadata ---
-$ExternalButtonName = "Rotating Faceted Sphere"
-$ScriptDescription  = "Displays selected images/videos on a rotating 3D sphere; each facet advances independently in queue order."
+$ExternalButtonName = "Faceted Sphere (Multi Media) `n Ffmpeg"
+$ScriptDescription  = "Displays multiple media files at once, with each facet of a rotating 3D sphere showing a different file from the playlist. Uses FFmpeg for broad format support."
 
 # --- Dependency Check ---
 $RequiredExecutables = @("ffmpeg.exe", "ffprobe.exe", "ffplay.exe")

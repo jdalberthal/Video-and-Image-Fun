@@ -16,13 +16,13 @@
     faces.
 
 .EXAMPLE
-    PS C:\> .\Show-RotatingImageVideoCubeMediaElement.ps1
+    PS C:\> .\Show-RotatingImagesVideosCubeMediaElement.ps1
 
     Launches the file selection GUI. After selecting at least 6 files and clicking "Play", the
     script will launch the 3D cube window.
 
 .NOTES
-    Name:           Show-RotatingImageVideoCubeMediaElement.ps1
+    Name:           Show-RotatingImagesVideosCubeMediaElement.ps1
     Version:        1.0.0, 10/18/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com

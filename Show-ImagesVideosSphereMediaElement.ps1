@@ -12,12 +12,12 @@
     The 3D view is interactive, with controls to pause the rotation, change the rotation axis and
     speed, and hide the UI for an unobstructed view. It also supports text overlays.
 .EXAMPLE
-    PS C:\> .\Show-ImageVideoSphereMediaElement.ps1
+    PS C:\> .\Show-ImagesVideosSphereMediaElement.ps1
 
     Launches the file selection GUI. After selecting files and clicking "Play", the
     script will launch the 3D sphere window.
 .NOTES
-    Name:           Show-ImageVideoSphereMediaElement.ps1
+    Name:           Show-ImagesVideosSphereMediaElement.ps1
     Version:        1.0.0, 10/25/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com

@@ -1,18 +1,18 @@
 <#
 .SYNOPSIS
-    Displays a playlist of media on an interactive, rotating, faceted 3D sphere using FFmpeg.
+    Displays a single media file at a time from a playlist on all facets of an interactive, rotating 3D sphere, using FFmpeg.
 .DESCRIPTION
-    This script creates a WPF window and renders a 3D sphere. The sphere's geometry is
-    programmatically generated with flat facets. It then prompts the user to select an image
-    or video file, which is displayed on each facet of the sphere.
+    This script creates a WPF window and renders a 3D sphere with programmatically generated
+    flat facets. It prompts the user to select a playlist of image and video files. The script
+    then displays one media file at a time from the playlist, applying the same image or video
+    to every facet of the sphere simultaneously.
 
     It uses FFmpeg to decode video frames in real-time and stream them to a WriteableBitmap,
     which is then applied as a texture to each facet. This allows for broad video format support.
 
-    The 3D view is interactive, with controls to pause the rotation, change the rotation axis and
-    speed, and hide the UI for an unobstructed view. It also supports text overlays.
+    The sphere has a continuous rotation animation and includes UI controls to pause, change speed, and randomize the rotation axis.
 .EXAMPLE
-    PS C:\> .\Show-ImageVideoFacetedSphereFfmpeg.ps1
+    PS C:\> .\Show-ImagesVideosFacetedSphereFfmpegSingle.ps1
 
     Launches the file selection GUI. After selecting files and clicking "Play", the
     script will launch the 3D faceted sphere window.
@@ -23,16 +23,15 @@
     Website:        https://www.jdalberthal.com
     GitHub:         https://github.com/jdalberthal
     Dependencies:   Requires PowerShell with .NET/WPF access. The following executables must be in
-                    the system's PATH or in the same directory as the script:
-                    - FFmpeg (ffmpeg.exe, ffplay.exe): https://www.ffmpeg.org/download.html
+                    the system's PATH or in the same directory as the script: `ffmpeg.exe`, `ffplay.exe`.
 #>
 
 Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms, System.Drawing
 
 # --- Script Metadata ---
-$ExternalButtonName = "Rotating Faceted Sphere (FFmpeg)"
-$ScriptDescription = "Loops through and displays selected images or videos on each facet of a rotating 3D sphere. Uses FFmpeg for video decoding, providing broad format support."
+$ExternalButtonName = "Faceted Sphere (Single Media) `n Ffmpeg"
+$ScriptDescription = "Displays one media file at a time from a playlist, showing the same media on all facets of a rotating 3D sphere. Uses FFmpeg for broad format support."
 
 # --- Dependency Check ---
 $RequiredExecutables = @("ffmpeg.exe", "ffplay.exe")

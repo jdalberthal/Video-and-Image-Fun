@@ -13,6 +13,7 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 - **Import/Export Results**: Export scan results to CSV and import them later for review.
 - **3D Media Faceted Sphere**: Display images and videos on a rotating 3D faceted sphere.
 - **3D Media Sphere**: Display images and videos on a rotating 3D sphere.
+- **3D Media Pie**: Display media on the front and back of 8 rotating 3D pie slices.
 - **3D Media Cube**: Display images or videos on the faces of an interactive, rotating 3D cube.
 - **Continuous Media Scroller**: Create a seamless, gapless horizontal or vertical scrolling display of images and videos.
 - **3D Floating Cubes**: Display media on multiple, independently moving and rotating 3D cubes.
@@ -63,13 +64,20 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Displays selected images and videos on a rotating 3D sphere using FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
-- **`Show-ImagesVideosFacetedSphereFfmpeg.ps1`**
-  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere, with each facet playing media independently from the playlist. Uses FFmpeg for broad format support.
+- **`Show-ImagesVideosFacetedSphereFfmpegSingle.ps1`**
+  - **Description**: Displays one media file at a time from a playlist, showing the same media on all facets of a rotating 3D sphere. Uses FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
+- **`Show-ImagesVideosFacetedSphereFfmpegMulti.ps1`**
+  - **Description**: Displays multiple media files at once, with each facet of a rotating 3D sphere showing a different file from the playlist. Uses FFmpeg for broad format support.
+  - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`.
+
+- **`Show-ImagesVideosPie3DFfmpeg.ps1`**
+  - **Description**: Displays media on the front and back of 8 rotating 3D pie slices. Uses FFmpeg for broad format support.
+  - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`.
 
 ### Media Viewers (MediaElement-Based)
 
-- **`Show-RotatingImageVideoCubeMediaElement.ps1`**
+- **`Show-RotatingImagesVideosCubeMediaElement.ps1`**
   - **Description**: Displays selected images and videos on a rotating 3D cube using the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
@@ -94,11 +102,15 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 - **`Show-ImagesVideosFacetedSphereMediaElementSingle.ps1`**
-  - **Description**: Displays a single playlist of media on all facets of a rotating 3D faceted sphere using the native Windows MediaElement.
+  - **Description**: Displays one media file at a time from a playlist, showing the same media on all facets of a rotating 3D sphere. Uses the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 - **`Show-ImagesVideosFacetedSphereMediaElementMulti.ps1`**
-  - **Description**: Displays selected images and videos on a rotating 3D faceted sphere, with each facet playing media independently from the playlist. Uses the native Windows MediaElement.
+  - **Description**: Displays multiple media files at once, with each facet of a rotating 3D sphere showing a different file from the playlist. Uses the native Windows MediaElement.
+  - **Dependencies**: PowerShell with .NET/WPF access.
+
+- **`Show-ImagesVideosPie3DMediaElement.ps1`**
+  - **Description**: Displays media on the front and back of 8 rotating 3D pie slices using the native Windows MediaElement.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 ## Getting Started

@@ -1,22 +1,23 @@
 <#
 .SYNOPSIS
-    Displays a playlist of media on an interactive, rotating, faceted 3D sphere.
+    Displays a single media file at a time from a playlist on all facets of an interactive, rotating 3D sphere.
 .DESCRIPTION
-    This script creates a WPF window and renders a 3D sphere. The sphere's geometry is
-    programmatically generated with flat facets. It then prompts the user to select an image
-    or video file, which is displayed on each facet of the sphere.
+    This script creates a WPF window and renders a 3D sphere with programmatically generated
+    flat facets. It prompts the user to select a playlist of image and video files. The script
+    then displays one media file at a time from the playlist, applying the same image or video
+    to every facet of the sphere simultaneously.
 
-    The sphere has a continuous rotation animation and includes UI controls to pause, change speed, and randomize the rotation.
+    The sphere has a continuous rotation animation and includes UI controls to pause, change speed, and randomize the rotation axis.
 
     This version uses the built-in Windows MediaElement for video playback, so video format
     support is limited to codecs installed on the local system.
 .EXAMPLE
-    PS C:\> .\Show-ImagesVideosFacetedSphereMediaElement.ps1
+    PS C:\> .\Show-ImagesVideosFacetedSphereMediaElementSingle.ps1
 
     Launches the file selection GUI. After selecting files and clicking "Play", the
     script will launch the 3D faceted sphere window.
 .NOTES
-    Name:           Show-ImagesVideosFacetedSphereMediaElement.ps1
+    Name:           Show-ImagesVideosFacetedSphereMediaElementSingle.ps1
     Version:        1.0.0, 10/25/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com
@@ -29,8 +30,8 @@ Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms, System.Drawing
 
 # --- Script Metadata ---
-$ExternalButtonName = "Rotating Faceted Sphere"
-$ScriptDescription = "Loops through and displays selected images or videos on each facet of a rotating 3D sphere. Uses the built-in Windows MediaElement."
+$ExternalButtonName = "Faceted Sphere (Single Media)"
+$ScriptDescription = "Displays one media file at a time from a playlist, showing the same media on all facets of a rotating 3D sphere. Uses the built-in Windows MediaElement."
 
 # --- Dependency Check ---
 $RequiredExecutables = @() # No external executables needed
