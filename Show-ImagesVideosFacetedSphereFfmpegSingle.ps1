@@ -363,6 +363,70 @@ while ($true)
             }
         })
 
+    $HelpLabel = New-Object System.Windows.Forms.Label -Property @{
+        Text      = "F1 - Help"
+        AutoSize  = $true
+        Location  = '700, 10'
+    }
+    $SelectForm.Controls.Add($HelpLabel)
+
+    [xml]$XamlHelpPopup = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Help" Height="340" Width="450" WindowStartupLocation="CenterScreen">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <RichTextBox x:Name="MyRichTextBox" Grid.Row="0" Margin="5" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+            <FlowDocument>
+                <FlowDocument.Resources>
+                    <Style TargetType="{x:Type Paragraph}">
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </FlowDocument.Resources>
+                <Paragraph>
+                    <Run Text="Hopefully the selection dialog is self-explanatory. :-)"/><LineBreak/>
+                    <Run Text=" "/>
+                </Paragraph>
+                <Paragraph>
+                    <Run Text="Commands for after media is playing:"/><LineBreak/>
+                </Paragraph>    
+                <Paragraph TextAlignment="Left" FontFamily="Consolas">
+                    <Bold>
+                        <Run Text="Button            : Key : Action" TextDecorations="Underline"/><LineBreak/>
+                    </Bold>
+                    <Run Text="X                 : Esc : Exit"/><LineBreak/>
+                    <Run Text="Pause/Resume      :  P  : Pause/Resume Spinning"/><LineBreak/>
+                    <Run Text="Redo              :  R  : Reselect Media"/><LineBreak/>
+                    <Run Text="Random Axis       :  A  : Change Rotation Axis"/><LineBreak/>
+                    <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
+                    <Run Text="Left Arrow        :  &#x2190;  : Slow Down Spinning"/><LineBreak/>
+                    <Run Text="Right Arrow       :  &#x2192;  : Speed Up Spinning"/><LineBreak/><LineBreak/>
+                    <Run Text="*Click sphere to Pause/Resume*"/><LineBreak/>
+                </Paragraph>
+            </FlowDocument>
+        </RichTextBox>
+        
+        <Button x:Name="OKButton" Grid.Row="1" Content="OK" HorizontalAlignment="Right" Width="80" Height="30" Margin="0,10,0,0" IsDefault="True"/>
+    </Grid>
+</Window>
+"@
+
+    $SelectForm.KeyPreview = $true
+    $SelectForm.Add_KeyDown({
+        param($sender, $e)
+        if ($e.KeyCode -eq "F1") {
+            $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
+            $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+            $OkButton = $PopupWindow.FindName("OKButton")
+            $OkButton.Add_Click({ $PopupWindow.Close() })
+            $PopupWindow.ShowDialog() | Out-Null
+        }
+    })
+
     $null = $SelectForm.ShowDialog()
     $SelectForm.Dispose()
 
@@ -719,6 +783,16 @@ while ($true)
                 "H" { $SyncHash.hideControlsButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
                 "Left" { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
                 "Right" { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+            "F1"
+            {
+                $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
+                $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+                $OkButton = $PopupWindow.FindName("OKButton")
+                $OkButton.Add_Click({
+                        $PopupWindow.Close()
+                    })
+                $PopupWindow.ShowDialog() | Out-Null
+            }
             }
         })
 

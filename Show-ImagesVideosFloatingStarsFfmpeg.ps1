@@ -1,27 +1,30 @@
 <#
 .SYNOPSIS
-    Displays selected images and videos on the faces of six floating, rotating 3D cubes using FFmpeg.
+    Displays selected images and videos on the surfaces of six floating, bouncing 3D stars using FFmpeg.
 
 .DESCRIPTION
-    This script launches a GUI to select image and video files, then renders them onto the faces
-    of six independently moving and rotating 3D cubes in a WPF window. This creates a "zero-gravity"
-    or "space" visual effect.
+    This script launches a GUI to select image and video files, then renders them onto the surfaces
+    of six independently moving 3D stars in a WPF window. The stars move in straight lines and
+    bounce off the edges of the screen, creating a "zero-gravity" or "screen saver" visual effect.
+
+    A "star" is a composite 3D object made of a central sphere and six cones. All parts of a single
+    star display the same media content.
 
     This version uses FFmpeg for video decoding, providing support for a wide range of video formats
     without relying on system-installed codecs.
 
-    The 3D view is interactive, with controls to pause the animation, change the rotation speed,
-    and hide the UI for an unobstructed view. It also supports text overlays on the cube faces.
+    The 3D view is interactive, with controls to pause the animation and hide the UI for an
+    unobstructed view.
 
 .EXAMPLE
-    PS C:\> .\Show-ImagesVideosFloatingCubesFfmpeg.ps1
+    PS C:\> .\Show-ImagesVideosFloatingStarsFfmpeg.ps1
 
     Launches the file selection GUI. After selecting at least one file and clicking "Play", the
-    script will launch the 3D cube window with six floating cubes.
+    script will launch the 3D window with six floating, bouncing stars.
 
 .NOTES
-    Name:           Show-ImagesVideosFloatingCubesFfmpeg.ps1
-    Version:        1.0.0, 10/26/2025
+    Name:           Show-ImagesVideosFloatingStarsFfmpeg.ps1
+    Version:        1.0.0, 11/15/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com
     GitHub:         https://github.com/jdalberthal
@@ -34,8 +37,8 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
 # --- Script Metadata ---
-$ExternalButtonName = "Floating Cubes `n(FFmpeg)"
-$ScriptDescription = "Displays media on six independently floating and rotating 3D cubes. Uses FFmpeg for broad video format support."
+$ExternalButtonName = "Floating Stars `n(FFmpeg)"
+$ScriptDescription = "Displays media on six independently floating and bouncing 3D stars. Uses FFmpeg for broad video format support."
 $RequiredExecutables = @("ffmpeg.exe", "ffprobe.exe", "ffplay.exe")
 
 # --- Dependency Check ---
@@ -69,7 +72,6 @@ while ($true) {
         PlayerState = [hashtable]::Synchronized(@{})
         ImageExtensions = @(".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico")
         ImageHoldSeconds = 10
-        AllAnimations = [hashtable]::Synchronized(@{})
         Paused = $false
         ControlsHidden = $false
         RedoClicked = $false
@@ -81,12 +83,15 @@ while ($true) {
         FontFamily = "Arial"
         IsBold = $true
         IsItalic = $false
+        # For bouncing animation
+        StarObjects = @()
+        LastFrameTime = [System.Diagnostics.Stopwatch]::GetTimestamp()
     })
 
     # --- File Selection Form ---
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $SelectForm = New-Object System.Windows.Forms.Form
-    $SelectForm.Text = "Floating Cubes (FFmpeg) - Media Selector"
+    $SelectForm.Text = "Floating Stars (FFmpeg) - Media Selector"
     $SelectForm.Size = New-Object System.Drawing.Size(800, 680)
     $SelectForm.StartPosition = "CenterScreen"
 
@@ -307,10 +312,8 @@ while ($true) {
                     <Run Text="X                 : Esc : Exit"/><LineBreak/>
                     <Run Text="Pause/Resume      :  P  : Pause/Resume Animation"/><LineBreak/>
                     <Run Text="Redo              :  R  : Reselect Media"/><LineBreak/>
-                    <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
-                    <Run Text="Left Arrow        :  &#x2190;  : Slow Down Animation"/><LineBreak/>
-                    <Run Text="Right Arrow       :  &#x2192;  : Speed Up Animation"/><LineBreak/><LineBreak/>
-                    <Run Text="*Click a cube to Pause/Resume*"/><LineBreak/>
+                    <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/><LineBreak/>
+                    <Run Text="*Click a star to Pause/Resume*"/><LineBreak/>
                 </Paragraph>
             </FlowDocument>
         </RichTextBox>
@@ -378,7 +381,7 @@ while ($true) {
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Floating Cubes (FFmpeg)"
+        Title="Floating Stars (FFmpeg)"
         WindowStartupLocation="CenterScreen" 
         WindowStyle="None" AllowsTransparency="True" Background="Transparent">
     <Grid x:Name="MainGrid">
@@ -398,8 +401,6 @@ while ($true) {
         </Viewport3D>
         <StackPanel Name="controlsPanel" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
             <Button Name="pauseButton" Content="Pause" Padding="10,5" Margin="2"/>
-            <Button Name="slowDownButton" Content="&#x2190;" Padding="10,5" Margin="2" FontWeight="Bold"/>
-            <Button Name="speedUpButton" Content="&#x2192;" Padding="10,5" Margin="2" FontWeight="Bold"/>
             <Button Name="redoButton" Content="Redo" Padding="10,5" Margin="2"/>
             <Button Name="hideControlsButton" Content="Hide Controls" Padding="10,5" Margin="2"/>
             <Button Name="closeButton" Content="X" Padding="10,5" Margin="2" FontWeight="Bold"/>
@@ -422,74 +423,167 @@ while ($true) {
 
     # --- Helper Functions ---
 
-    function New-CubeVisual3D {
+    function New-SphereMesh {
         param(
-            [int]$CubeIndex,
-            [hashtable]$SyncHash
+            [double]$radius = 1.0,
+            [int]$slices = 64, # Longitude
+            [int]$stacks = 32  # Latitude
         )
 
-        $cubeVisual = New-Object System.Windows.Media.Media3D.ModelVisual3D
-        $cubeModelGroup = New-Object System.Windows.Media.Media3D.Model3DGroup
+        $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D
 
-        $faceNames = @("Front", "Back", "Right", "Left", "Top", "Bottom")
-        $positions = @(
-            "-1,-1,1  1,-1,1  1,1,1  -1,1,1",   # Front
-            "-1,-1,-1  -1,1,-1  1,1,-1  1,-1,-1",   # Back
-            "1,-1,1  1,-1,-1  1,1,-1  1,1,1",     # Right
-            "-1,-1,-1  -1,-1,1  -1,1,1  -1,1,-1",   # Left
-            "-1,1,1  1,1,1  1,1,-1  -1,1,-1",     # Top
-            "-1,-1,-1  1,-1,-1  1,-1,1  -1,-1,1"    # Bottom
-        )
-        $normals = @(
-            "0,0,1 0,0,1 0,0,1 0,0,1", "0,0,-1 0,0,-1 0,0,-1 0,0,-1", "1,0,0 1,0,0 1,0,0 1,0,0",
-            "-1,0,0 -1,0,0 -1,0,0 -1,0,0", "0,1,0 0,1,0 0,1,0 0,1,0", "0,-1,0 0,-1,0 0,-1,0 0,-1,0"
-        )
-        $textureCoords = @(
-            "0,1 1,1 1,0 0,0", "1,1 1,0 0,0 0,1", "0,1 1,1 1,0 0,0",
-            "0,1 1,1 1,0 0,0", "0,1 1,1 1,0 0,0", "0,1 1,1 1,0 0,0"
-        )
+        for ($stack = 0; $stack -le $stacks; $stack++) {
+            $phi = [Math]::PI / 2 - $stack * [Math]::PI / $stacks
+            $y = $radius * [Math]::Sin($phi)
+            $r = $radius * [Math]::Cos($phi)
 
-        $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
+            for ($slice = 0; $slice -le $slices; $slice++) {
+                $theta = $slice * 2 * [Math]::PI / $slices
+                $x = $r * [Math]::Cos($theta)
+                $z = $r * [Math]::Sin($theta)
 
-        for ($i = 0; $i -lt $faceNames.Length; $i++) {
-            $faceName = $faceNames[$i]
-            $facetIndex = ($CubeIndex * 6) + $i
-
-            $imageControl = New-Object System.Windows.Controls.Image -Property @{ Stretch = 'Fill' }
-            $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
-                HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'; TextWrapping = 'Wrap';
-                TextAlignment = 'Center'; IsHitTestVisible = $false; Margin = '10,0,10,0'
-            }
-            $grid = New-Object System.Windows.Controls.Grid -Property @{ Background = [System.Windows.Media.Brushes]::Black }
-            [void]$grid.Children.Add($imageControl)
-            [void]$grid.Children.Add($overlayTextBlock)
-
-            $visualBrush = New-Object System.Windows.Media.VisualBrush -Property @{ Visual = $grid }
-            $material = New-Object $materialType -Property @{ Brush = $visualBrush }
-            if ($SyncHash.UseTransparentEffect) { $material.Color = [System.Windows.Media.Colors]::White }
-
-            $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D -Property @{
-                Positions = $positions[$i]; TriangleIndices = "0,1,2 0,2,3"; Normals = $normals[$i]; TextureCoordinates = $textureCoords[$i]
-            }
-            $geometryModel = New-Object System.Windows.Media.Media3D.GeometryModel3D -Property @{ Geometry = $mesh; Material = $material }
-            [void]$cubeModelGroup.Children.Add($geometryModel)
-
-            $SyncHash.PlayerState[$facetIndex] = @{
-                ImageControl  = $imageControl
-                Overlay       = $overlayTextBlock
-                IsImage       = $false
-                ImageTimer    = $null
-                IsFailed      = $false
-                RecoveryTimer = $null
-                FfmpegProcess = $null
-                FrameReader   = $null
-                WriteableBmp  = $null
-                CurrentPath   = $null
+                $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, $y, $z))
+                $mesh.TextureCoordinates.Add([System.Windows.Point]::new($slice / $slices, $stack / $stacks))
             }
         }
 
-        $cubeVisual.Content = $cubeModelGroup
-        return $cubeVisual
+        for ($stack = 0; $stack -lt $stacks; $stack++) {
+            for ($slice = 0; $slice -lt $slices; $slice++) {
+                $i0 = $stack * ($slices + 1) + $slice
+                $i1 = ($stack + 1) * ($slices + 1) + $slice
+
+                $mesh.TriangleIndices.Add($i0); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i0 + 1)
+                $mesh.TriangleIndices.Add($i0 + 1); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i1 + 1)
+            }
+        }
+        return $mesh
+    }
+
+    function New-ConeMesh {
+        param(
+            [double]$radius = 0.4,
+            [double]$height = 1.5,
+            [int]$slices = 64
+        )
+
+        $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D
+
+        # Apex vertex
+        $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, $height, 0))
+        $mesh.TextureCoordinates.Add([System.Windows.Point]::new(0.5, 0))
+
+        # Base vertices
+        for ($i = 0; $i -le $slices; $i++) {
+            $theta = $i * 2 * [Math]::PI / $slices
+            $x = $radius * [Math]::Cos($theta)
+            $z = $radius * [Math]::Sin($theta)
+            $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, 0, $z))
+            $mesh.TextureCoordinates.Add([System.Windows.Point]::new($i / $slices, 1))
+        }
+
+        # Base center vertex for the bottom cap
+        $baseCenterIndex = $mesh.Positions.Count
+        $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, 0, 0))
+        $mesh.TextureCoordinates.Add([System.Windows.Point]::new(0.5, 0.5))
+
+        # Add triangle indices for the cone sides
+        for ($i = 0; $i -lt $slices; $i++) {
+            $mesh.TriangleIndices.Add(0); $mesh.TriangleIndices.Add($i + 2); $mesh.TriangleIndices.Add($i + 1)
+        }
+
+        # Add triangle indices for the base cap
+        for ($i = 0; $i -lt $slices; $i++) {
+            $mesh.TriangleIndices.Add($baseCenterIndex); $mesh.TriangleIndices.Add($i + 1); $mesh.TriangleIndices.Add($i + 2)
+        }
+
+        return $mesh
+    }
+
+    function New-StarVisual3D {
+        param(
+            [int]$StarIndex,
+            [hashtable]$SyncHash
+        )
+
+        $starContainer = New-Object System.Windows.Media.Media3D.ModelVisual3D
+
+        $sphereRadius = 0.5
+        $coneHeight = 1.5
+        $coneRadius = 0.4
+
+        $sphereMesh = New-SphereMesh -radius $sphereRadius -slices 64 -stacks 32
+        $coneMesh = New-ConeMesh -radius $coneRadius -height $coneHeight -slices 64
+
+        $visuals = @{
+            "Middle" = @{ "Mesh" = $sphereMesh; "Transform" = (New-Object System.Windows.Media.Media3D.TranslateTransform3D) }
+            "Top"    = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)) }
+            "Bottom" = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.Transform3DGroup) }
+            "Right"  = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.Transform3DGroup) }
+            "Left"   = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.Transform3DGroup) }
+            "Front"  = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.Transform3DGroup) }
+            "Back"   = @{ "Mesh" = $coneMesh;   "Transform" = (New-Object System.Windows.Media.Media3D.Transform3DGroup) }
+        }
+
+        # Configure transforms for cones
+        $visuals.Bottom.Transform.Children.Add((New-Object System.Windows.Media.Media3D.ScaleTransform3D(1, -1, 1)))
+        $visuals.Bottom.Transform.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, -$sphereRadius, 0)))
+
+        $visuals.Right.Transform.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D([System.Windows.Media.Media3D.AxisAngleRotation3D]::new([System.Windows.Media.Media3D.Vector3D]::new(0,0,1), -90))))
+        $visuals.Right.Transform.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D($sphereRadius, 0, 0)))
+
+        $visuals.Left.Transform.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D([System.Windows.Media.Media3D.AxisAngleRotation3D]::new([System.Windows.Media.Media3D.Vector3D]::new(0,0,1), 90))))
+        $visuals.Left.Transform.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(-$sphereRadius, 0, 0)))
+
+        $visuals.Front.Transform.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D([System.Windows.Media.Media3D.AxisAngleRotation3D]::new([System.Windows.Media.Media3D.Vector3D]::new(1,0,0), 90))))
+        $visuals.Front.Transform.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, 0, $sphereRadius)))
+
+        $visuals.Back.Transform.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D([System.Windows.Media.Media3D.AxisAngleRotation3D]::new([System.Windows.Media.Media3D.Vector3D]::new(1,0,0), -90))))
+        $visuals.Back.Transform.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, 0, -$sphereRadius)))
+
+        # Create the 2D content (a Grid with an Image and TextBlock) for this star.
+        $imageControl = New-Object System.Windows.Controls.Image -Property @{ Stretch = 'Fill' }
+        $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
+            HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'; TextWrapping = 'Wrap';
+            TextAlignment = 'Center'; IsHitTestVisible = $false; Margin = '10,0,10,0'
+        }
+        $visualHostGrid = New-Object System.Windows.Controls.Grid -Property @{ Background = [System.Windows.Media.Brushes]::Black }
+        
+        [void]$visualHostGrid.Children.Add($imageControl)
+        [void]$visualHostGrid.Children.Add($overlayTextBlock)
+
+        # Create a single VisualBrush from the 2D content. This brush can be shared.
+        $visualBrush = New-Object System.Windows.Media.VisualBrush -Property @{ Visual = $visualHostGrid }
+        # Create a visible ModelVisual3D for each part of the star.
+        # Each part gets its own material, but all materials will share the same VisualBrush.
+        foreach ($key in $visuals.Keys) {
+            $part = $visuals[$key]
+            $geometryModel = New-Object System.Windows.Media.Media3D.GeometryModel3D
+            $geometryModel.Geometry = $part.Mesh
+            $geometryModel.Transform = $part.Transform
+
+            $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
+            $geometryModel.Material = New-Object $materialType -Property @{ Brush = $visualBrush }
+
+            $modelVisual = New-Object System.Windows.Media.Media3D.ModelVisual3D
+            $modelVisual.Content = $geometryModel
+            $starContainer.Children.Add($modelVisual)
+        }
+
+        $SyncHash.PlayerState[$StarIndex] = @{
+            ImageControl  = $imageControl
+            Overlay       = $overlayTextBlock
+            IsImage       = $false
+            PlaybackStopwatch = New-Object System.Diagnostics.Stopwatch
+            ImageTimer    = $null
+            IsFailed      = $false
+            RecoveryTimer = $null
+            FfmpegProcess = $null
+            FrameReader   = $null
+            WriteableBmp  = $null
+            CurrentPath   = $null
+        }
+
+        return $starContainer
     }
 
     $globalIndexLock = New-Object object
@@ -504,13 +598,13 @@ while ($true) {
         }
     }
 
-    function Assign-NextMediaToFace {
-        param([int]$FacetIndex, [hashtable]$SyncHash)
+    function Assign-NextMediaToStar {
+        param([int]$StarIndex, [hashtable]$SyncHash)
 
-        $playerState = $SyncHash.PlayerState[$FacetIndex]
+        $playerState = $SyncHash.PlayerState[$StarIndex]
         if (-not $playerState) { return }
 
-        # Stop any existing timers or processes for this face
+        # Stop any existing timers or processes for this star
         if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
         if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
         if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited) { try { $playerState.FfmpegProcess.Kill() } catch {} }
@@ -537,14 +631,16 @@ while ($true) {
             $playerState.ImageControl.Source = $bitmap
 
             $timer = New-Object System.Windows.Threading.DispatcherTimer
+            $playerState.PlaybackStopwatch.Restart() # Start timer for consistency with video path
             $timer.Interval = [TimeSpan]::FromSeconds($SyncHash.ImageHoldSeconds)
-            $timer.Tag = $FacetIndex
+            $timer.Tag = $StarIndex
             $timer.Add_Tick({
-                $t = $args[0]; $fIndex = $t.Tag; $t.Stop()
-                Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
+                $t = $args[0]; $sIndex = $t.Tag; $t.Stop()
+                Assign-NextMediaToStar -StarIndex $sIndex -SyncHash $SyncHash
             })
             $playerState.ImageTimer = $timer
             $timer.Start()
+            $playerState.IsFailed = $false # Mark as successful
         } else {
             # Video playback with FFmpeg
             try {
@@ -557,12 +653,12 @@ while ($true) {
                 $probe_proc.WaitForExit()
 
                 $width, $height = $ffprobeOutput -split 'x'
-                if (($probe_proc.ExitCode -ne 0) -or -not ($width -and $height -and [int]$width -gt 0 -and [int]$height -gt 0)) { throw "Invalid dimensions or corrupt file." }
+                if (($probe_proc.ExitCode -ne 0) -or -not ($width -and $height -and [int]$width -gt 0 -and [int]$height -gt 0)) { throw "ffprobe could not get valid dimensions." }
 
                 $playerState.WriteableBmp = New-Object System.Windows.Media.Imaging.WriteableBitmap([int]$width, [int]$height, 96, 96, [System.Windows.Media.PixelFormats]::Bgr24, $null)
                 $playerState.ImageControl.Source = $playerState.WriteableBmp
 
-                $loopArg = if ($SyncHash.SelectedFiles.Count -le 36) { "-stream_loop -1" } else { "" }
+                $loopArg = if ($SyncHash.SelectedFiles.Count -le 6) { "-stream_loop -1" } else { "" }
 
                 $psi = New-Object System.Diagnostics.ProcessStartInfo -Property @{
                     FileName = "ffmpeg"; Arguments = "-hide_banner -loglevel error $loopArg -i `"$($uri.LocalPath)`" -vf scale=${width}:${height} -f rawvideo -pix_fmt bgr24 -";
@@ -579,17 +675,28 @@ while ($true) {
 
                 $frameTimer = New-Object System.Windows.Threading.DispatcherTimer
                 $frameTimer.Interval = [TimeSpan]::FromMilliseconds(33) # ~30fps
-                $frameTimer.Tag = $FacetIndex
+                $frameTimer.Tag = $StarIndex
+
+                $playerState.PlaybackStopwatch.Restart() # Start timing the playback
+                $playerState.IsFailed = $false # Tentatively mark as successful
 
                 $tickScriptBlock = {
-                    $timer = $args[0]; $fIndex = $timer.Tag
-                    $pState = $SyncHash.PlayerState[$fIndex]
+                    $timer = $args[0]; $sIndex = $timer.Tag
+                    $pState = $SyncHash.PlayerState[$sIndex]
                     $totalRead = 0
                     while ($totalRead -lt $bytesPerFrame) {
                         $bytesRead = $stream.Read($buffer, $totalRead, $bytesPerFrame - $totalRead)
+                        
+                        # Check for instant failure
+                        $pState.PlaybackStopwatch.Stop()
+                        if ($bytesRead -le 0 -and $pState.PlaybackStopwatch.Elapsed.TotalMilliseconds -lt 1000) {
+                            Handle-MediaFailure -StarIndex $sIndex -Reason "Playback stream ended instantly." -SyncHash $SyncHash
+                            return
+                        }
+
                         if ($bytesRead -le 0) { # End of stream or error
                             $timer.Stop()
-                            Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
+                            Assign-NextMediaToStar -StarIndex $sIndex -SyncHash $SyncHash
                             return
                         }
                         $totalRead += $bytesRead
@@ -599,102 +706,72 @@ while ($true) {
                         $pState.WriteableBmp.WritePixels($rect, $buffer, $stride, 0)
                         $pState.WriteableBmp.Unlock()
                     }
+                    $pState.PlaybackStopwatch.Restart() # Restart for next frame interval check
                 }
                 $frameTimer.Add_Tick($tickScriptBlock.GetNewClosure())
                 $playerState.ImageTimer = $frameTimer # Reuse ImageTimer property for cleanup
                 $frameTimer.Start()
             } catch {
-                Handle-MediaFailure -FacetIndex $FacetIndex -Reason $_.Exception.Message -SyncHash $SyncHash
+                Handle-MediaFailure -StarIndex $StarIndex -Reason $_.Exception.Message -SyncHash $SyncHash
             }
         }
     }
 
     function Handle-MediaFailure {
-        param([int]$FacetIndex, [string]$Reason, [hashtable]$SyncHash)
-
-        $playerState = $SyncHash.PlayerState[$FacetIndex]
+        param([int]$StarIndex, [string]$Reason, [hashtable]$SyncHash)
+        $playerState = $SyncHash.PlayerState[$StarIndex]
         if (-not $playerState -or $playerState.IsFailed) { return }
-
         $playerState.IsFailed = $true
-        $fileName = if ($playerState.CurrentPath) { [System.IO.Path]::GetFileName($playerState.CurrentPath) } else { "media" }
-        $playerState.Overlay.Text = "ERROR`n$fileName`n$Reason"
-        $playerState.Overlay.Visibility = 'Visible'
-        $playerState.ImageControl.Source = $null # Clear the image
 
-        if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
-        $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer
-        $recoveryTimer.Interval = [TimeSpan]::FromSeconds(5)
-        $recoveryTimer.Tag = $FacetIndex
-        $recoveryTimer.Add_Tick({
-            $timer = $args[0]; $fIndex = $timer.Tag; $timer.Stop()
-            $state = $SyncHash.PlayerState[$fIndex]
-            $state.IsFailed = $false
-            Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
-        })
-        $playerState.RecoveryTimer = $recoveryTimer
-        $recoveryTimer.Start()
+        $failedPath = $playerState.CurrentPath
+        $fileName = if ($failedPath) { [System.IO.Path]::GetFileName($failedPath) } else { "an unknown file" }
+        Write-Warning "Media failed for Star $StarIndex (File: '$fileName'). Reason: $Reason. Removing from list and continuing."
+
+        # Remove the bad file from the list in a thread-safe way
+        if ($failedPath) {
+            $SyncHash.SelectedFiles = @($SyncHash.SelectedFiles | Where-Object { $_ -ne $failedPath })
+        }
+
+        # Immediately try to load the next file.
+        # This needs to be on the main thread, but Handle-MediaFailure is called from there.
+        Assign-NextMediaToStar -StarIndex $StarIndex -SyncHash $SyncHash
     }
 
-    # --- Create and Animate 6 Cubes ---
+    # --- Create and Prepare 6 Stars ---
     for ($i = 0; $i -lt 6; $i++) {
-        $cubeVisual = New-CubeVisual3D -CubeIndex $i -SyncHash $SyncHash
+        $starVisual = New-StarVisual3D -StarIndex $i -SyncHash $SyncHash
 
+        # Set up transforms for movement and rotation
         $transformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
         $rotateTransform = New-Object System.Windows.Media.Media3D.RotateTransform3D
-        $rotation = New-Object System.Windows.Media.Media3D.AxisAngleRotation3D
-        $rotation.Axis = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
-        $rotateTransform.Rotation = $rotation
-        $transformGroup.Children.Add($rotateTransform)
-
         $translateTransform = New-Object System.Windows.Media.Media3D.TranslateTransform3D
+        $transformGroup.Children.Add($rotateTransform)
         $transformGroup.Children.Add($translateTransform)
-        $cubeVisual.Transform = $transformGroup
+        $starVisual.Transform = $transformGroup
 
-        $rotAnim = New-Object System.Windows.Media.Animation.DoubleAnimation -Property @{
-            From = 0; To = 360; Duration = [TimeSpan]::FromSeconds((Get-Random -Minimum 15 -Maximum 45))
-            RepeatBehavior = [Windows.Media.Animation.RepeatBehavior]::Forever
+        # Store object references for the animation loop
+        $starObject = [pscustomobject]@{
+            Visual = $starVisual
+            Translate = $translateTransform
+            Rotate = $rotateTransform
+            # Create a random direction vector, normalize it to get a pure direction, then multiply by a random speed.
+            # This ensures a more uniform "outward burst" from the center.
+            Velocity = {
+                $randomVector = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
+                if ($randomVector.Length -gt 0) { $randomVector.Normalize() } # Avoid division by zero if the vector is (0,0,0)
+                return $randomVector * (Get-Random -Minimum 1.5 -Maximum 3.0)
+            }.Invoke()
+            RotationVelocity = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -20.0 -Maximum 20.0), (Get-Random -Minimum -20.0 -Maximum 20.0), (Get-Random -Minimum -20.0 -Maximum 20.0))
+            CurrentRotation = New-Object System.Windows.Media.Media3D.Quaternion(0,0,0,1)
         }
-        $rotation.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $rotAnim)
+        $SyncHash.StarObjects += $starObject
 
-        $posAnimX = New-Object System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames
-        $posAnimY = New-Object System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames
-        $posAnimZ = New-Object System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames
-
-        $durationSeconds = (Get-Random -Minimum 20 -Maximum 60)
-        $posAnimX.Duration = [TimeSpan]::FromSeconds($durationSeconds)
-        $posAnimY.Duration = [TimeSpan]::FromSeconds($durationSeconds)
-        $posAnimZ.Duration = [TimeSpan]::FromSeconds($durationSeconds)
-        $posAnimX.RepeatBehavior = 'Forever'; $posAnimY.RepeatBehavior = 'Forever'; $posAnimZ.RepeatBehavior = 'Forever'
-
-        $xRadius = (Get-Random -Minimum 3 -Maximum 8)
-        $yRadius = (Get-Random -Minimum 2 -Maximum 6)
-        $zRadius = (Get-Random -Minimum 1 -Maximum 4)
-        $timeOffset = ($durationSeconds / 4) * (Get-Random -Minimum 0 -Maximum 3)
-
-        for ($k = 0; $k -le 4; $k++) {
-            $time = [System.Windows.Media.Animation.KeyTime]::FromTimeSpan([TimeSpan]::FromSeconds(($k * $durationSeconds / 4 + $timeOffset) % $durationSeconds))
-            $angle = $k * [Math]::PI / 2
-            $x = $xRadius * [Math]::Cos($angle)
-            $y = $yRadius * [Math]::Sin($angle)
-            $z = $zRadius * [Math]::Cos($angle * 2)
-            [void]$posAnimX.KeyFrames.Add((New-Object System.Windows.Media.Animation.SplineDoubleKeyFrame($x, $time)))
-            [void]$posAnimY.KeyFrames.Add((New-Object System.Windows.Media.Animation.SplineDoubleKeyFrame($y, $time)))
-            [void]$posAnimZ.KeyFrames.Add((New-Object System.Windows.Media.Animation.SplineDoubleKeyFrame($z, $time)))
-        }
-
-        $translateTransform.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetXProperty, $posAnimX)
-        $translateTransform.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetYProperty, $posAnimY)
-        $translateTransform.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetZProperty, $posAnimZ)
-        
-        $SyncHash.AllAnimations[$cubeVisual.GetHashCode()] = [pscustomobject]@{
-            RotationAnimation = $rotAnim; PositionAnimationX = $posAnimX; PositionAnimationY = $posAnimY; PositionAnimationZ = $posAnimZ
-        }
-        [void]$mainViewport.Children.Add($cubeVisual)
+        [void]$mainViewport.Children.Add($starVisual)
     }
 
     # --- Initial Media Loading ---
     for ($i = 0; $i -lt ($SyncHash.PlayerState.Keys.Count); $i++) {
-        Assign-NextMediaToFace -FacetIndex $i -SyncHash $SyncHash
+        Assign-NextMediaToStar -StarIndex $i -SyncHash $SyncHash
     }
 
     # --- Apply Text Overlay Settings on Load ---
@@ -712,8 +789,6 @@ while ($true) {
 
     # --- UI Controls and Event Handlers ---
     $SyncHash.pauseButton = $window.FindName("pauseButton")
-    $SyncHash.slowDownButton = $window.FindName("slowDownButton")
-    $SyncHash.speedUpButton = $window.FindName("speedUpButton")
     $SyncHash.redoButton = $window.FindName("redoButton")
     $SyncHash.hideControlsButton = $window.FindName("hideControlsButton")
     $SyncHash.closeButton = $window.FindName("closeButton")
@@ -728,53 +803,72 @@ while ($true) {
     })
 
     $pauseOrResumeAnimations = {
+        $SyncHash.Paused = -not $SyncHash.Paused
         if ($SyncHash.Paused) {
-            # --- RESUME ---
-            foreach ($visual in $mainViewport.Children) {
-                if (-not ($visual -is [System.Windows.Media.Media3D.ModelVisual3D] -and $visual.Transform)) { continue }
-                $animSet = $SyncHash.AllAnimations[$visual.GetHashCode()]; if (-not $animSet) { continue }
-                $rotation = $visual.Transform.Children[0].Rotation
-                $translation = $visual.Transform.Children[1]
-                $animSet.RotationAnimation.From = $rotation.Angle
-                $rotation.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $animSet.RotationAnimation)
-                $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetXProperty, $animSet.PositionAnimationX)
-                $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetYProperty, $animSet.PositionAnimationY)
-                $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetZProperty, $animSet.PositionAnimationZ)
-            }
-            $SyncHash.pauseButton.Content = "Pause"
-            $SyncHash.Paused = $false
-        } else {
-            # --- PAUSE ---
-            foreach ($visual in $mainViewport.Children) {
-                if (-not ($visual -is [System.Windows.Media.Media3D.ModelVisual3D] -and $visual.Transform -and $visual.Transform.Children)) { continue }
-                $rotation = $visual.Transform.Children[0].Rotation
-                $translation = $visual.Transform.Children[1]
-                $currentAngle = $rotation.Angle; $rotation.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null); $rotation.Angle = $currentAngle
-                $currentX = $translation.OffsetX; $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetXProperty, $null); $translation.OffsetX = $currentX
-                $currentY = $translation.OffsetY; $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetYProperty, $null); $translation.OffsetY = $currentY
-                $currentZ = $translation.OffsetZ; $translation.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetZProperty, $null); $translation.OffsetZ = $currentZ
-            }
             $SyncHash.pauseButton.Content = "Resume"
-            $SyncHash.Paused = $true
+        } else {
+            $SyncHash.pauseButton.Content = "Pause"
+            # Reset frame timer to avoid a large jump after unpausing
+            $SyncHash.LastFrameTime = [System.Diagnostics.Stopwatch]::GetTimestamp()
         }
     }
     $SyncHash.pauseButton.Add_Click($pauseOrResumeAnimations)
 
-    $changeSpeed = {
-        param($multiplier)
-        foreach ($animSet in $SyncHash.AllAnimations.Values) {
-            $animSet.RotationAnimation.Duration = [TimeSpan]::FromSeconds($animSet.RotationAnimation.Duration.TimeSpan.TotalSeconds * $multiplier)
-            $animSet.PositionAnimationX.Duration = [TimeSpan]::FromSeconds($animSet.PositionAnimationX.Duration.TimeSpan.TotalSeconds * $multiplier)
-            $animSet.PositionAnimationY.Duration = [TimeSpan]::FromSeconds($animSet.PositionAnimationY.Duration.TimeSpan.TotalSeconds * $multiplier)
-            $animSet.PositionAnimationZ.Duration = [TimeSpan]::FromSeconds($animSet.PositionAnimationZ.Duration.TimeSpan.TotalSeconds * $multiplier)
-        }
-        if (-not $SyncHash.Paused) {
-            & $pauseOrResumeAnimations # Pause
-            $window.Dispatcher.InvokeAsync([action]{ & $pauseOrResumeAnimations }, "Background") | Out-Null
+    # --- Bouncing Animation Logic ---
+    $animationHandler = {
+        param($sender, $e)
+
+        if ($SyncHash.Paused) { return }
+
+        $currentTime = [System.Diagnostics.Stopwatch]::GetTimestamp()
+        $elapsed = ($currentTime - $SyncHash.LastFrameTime) / [System.Diagnostics.Stopwatch]::Frequency
+        $SyncHash.LastFrameTime = $currentTime
+
+        # Define boundaries (approximate based on camera FOV and distance)
+        $xBoundary = 9
+        $yBoundary = 5
+        $zBoundary = 3
+
+        foreach ($star in $SyncHash.StarObjects) {
+            # Update Position
+            $newX = $star.Translate.OffsetX + ($star.Velocity.X * $elapsed)
+            $newY = $star.Translate.OffsetY + ($star.Velocity.Y * $elapsed)
+            $newZ = $star.Translate.OffsetZ + ($star.Velocity.Z * $elapsed)
+
+            # Since Vector3D is a struct, its properties are read-only. We must create a new vector to change it.
+            $velX = $star.Velocity.X
+            $velY = $star.Velocity.Y
+            $velZ = $star.Velocity.Z
+
+            # Check for bounces
+            if (($newX -gt $xBoundary -and $velX -gt 0) -or ($newX -lt -$xBoundary -and $velX -lt 0)) {
+                $velX *= -1
+            }
+            if (($newY -gt $yBoundary -and $velY -gt 0) -or ($newY -lt -$yBoundary -and $velY -lt 0)) {
+                $velY *= -1
+            }
+            if (($newZ -gt $zBoundary -and $velZ -gt 0) -or ($newZ -lt -$zBoundary -and $velZ -lt 0)) {
+                $velZ *= -1
+            }
+            $star.Velocity = New-Object System.Windows.Media.Media3D.Vector3D($velX, $velY, $velZ)
+
+            $star.Translate.OffsetX = $newX
+            $star.Translate.OffsetY = $newY
+            $star.Translate.OffsetZ = $newZ
+
+            # Update Rotation
+            $axisX = New-Object System.Windows.Media.Media3D.Vector3D(1,0,0)
+            $axisY = New-Object System.Windows.Media.Media3D.Vector3D(0,1,0)
+            $axisZ = New-Object System.Windows.Media.Media3D.Vector3D(0,0,1)
+
+            $deltaRotationX = New-Object System.Windows.Media.Media3D.Quaternion($axisX, ($star.RotationVelocity.X * $elapsed))
+            $deltaRotationY = New-Object System.Windows.Media.Media3D.Quaternion($axisY, ($star.RotationVelocity.Y * $elapsed))
+            $deltaRotationZ = New-Object System.Windows.Media.Media3D.Quaternion($axisZ, ($star.RotationVelocity.Z * $elapsed))
+            
+            $star.CurrentRotation = $star.CurrentRotation * $deltaRotationX * $deltaRotationY * $deltaRotationZ
+            $star.Rotate.Rotation = New-Object System.Windows.Media.Media3D.QuaternionRotation3D($star.CurrentRotation)
         }
     }
-    $SyncHash.slowDownButton.Add_Click({ & $changeSpeed 2.0 }) # Slower = longer duration
-    $SyncHash.speedUpButton.Add_Click({ & $changeSpeed 0.5 })  # Faster = shorter duration
 
     # --- Window-level Events ---
     $window.Add_KeyDown({
@@ -784,8 +878,6 @@ while ($true) {
             "P"      { $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
             "R"      { $SyncHash.redoButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
             "H"      { $SyncHash.hideControlsButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "Left"   { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "Right"  { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
             "F1"
             {
                 $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
@@ -800,15 +892,34 @@ while ($true) {
     })
 
     $mainGrid = $window.FindName("MainGrid")
-    $mainGrid.Add_MouseDown({ & $pauseOrResumeAnimations })
+    $mainGrid.Add_MouseDown({
+        param($sender, $e)
+        $viewport = $window.FindName('mainViewport')
+        $mousePosition = $e.GetPosition($viewport)
+        $hitVisual = $null
+
+        $hitTestCallback = [System.Windows.Media.HitTestResultCallback]{
+            param($result)
+            if ($result -is [System.Windows.Media.Media3D.RayMeshGeometry3DHitTestResult]) {
+                $script:hitVisual = $result.VisualHit
+                return [System.Windows.Media.HitTestResultBehavior]::Stop
+            }
+            return [System.Windows.Media.HitTestResultBehavior]::Continue
+        }
+
+        $hitTestParams = [System.Windows.Media.PointHitTestParameters]::new($mousePosition)
+        [System.Windows.Media.VisualTreeHelper]::HitTest($viewport, $null, $hitTestCallback, $hitTestParams)
+
+        if ($hitVisual) { # If we hit any part of a star
+            & $pauseOrResumeAnimations
+        }
+    })
 
     $window.Add_Closed({
-        foreach ($animSet in $SyncHash.AllAnimations.Values) {
-            if ($animSet) {
-                $animSet.RotationAnimation.BeginTime = $null; $animSet.PositionAnimationX.BeginTime = $null
-                $animSet.PositionAnimationY.BeginTime = $null; $animSet.PositionAnimationZ.BeginTime = $null
-            }
-        }
+        # Stop the animation handler
+        [System.Windows.Media.CompositionTarget]::remove_Rendering($animationHandler)
+
+        # Clean up media resources
         foreach ($playerState in $SyncHash.PlayerState.Values) {
             if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
             if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
@@ -820,6 +931,13 @@ while ($true) {
         # This event fires after the window is rendered. It's the perfect time
         # to signal that the main window is ready and the loading form can close.
         $SyncHash.WindowReady = $true
+    })
+
+    $window.Add_Loaded({
+        # Start the animation loop once the window is loaded
+        # Reset the timer here to prevent a large initial time jump from app startup.
+        $SyncHash.LastFrameTime = [System.Diagnostics.Stopwatch]::GetTimestamp()
+        [System.Windows.Media.CompositionTarget]::add_Rendering($animationHandler)
     })
 
     # --- Show the Window ---

@@ -1,65 +1,34 @@
 <#
 .SYNOPSIS
-    Displays selected images and videos on a rotating 3D sphere using FFmpeg.
+    Displays selected images and videos on a rotating 3D star-shaped object using MediaElement.
 .DESCRIPTION
     This script launches a GUI to select image and video files, then renders them one at a time
-    on a rotating 3D sphere in a WPF window.
+    on a rotating 3D star-shaped object in a WPF window.
 
-    It uses FFmpeg to decode video frames in real-time and stream them to a WriteableBitmap,
-    which is then applied as a texture to the sphere. This allows for broad video format support.
+    This version uses the built-in Windows MediaElement for video playback. As a result, video
+    format support is limited to the codecs installed on the local system (e.g., MP4, WMV, AVI).
 
     The 3D view is interactive, with controls to pause the rotation, change the rotation axis and
     speed, and hide the UI for an unobstructed view. It also supports text overlays.
 .EXAMPLE
-    PS C:\> .\Show-ImagesVideosSphereFfmpeg.ps1
+    PS C:\> .\Show-ImagesVideosRotatingStarMediaElement.ps1
 
     Launches the file selection GUI. After selecting files and clicking "Play", the
-    script will launch the 3D sphere window.
+    script will launch the 3D star window.
 .NOTES
-    Name:           Show-ImagesVideosSphereFfmpeg.ps1
-    Version:        1.0.0, 10/25/2025
+    Name:           Show-ImagesVideosRotatingStarMediaElement.ps1
+    Version:        1.0.0, 11/05/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com
     GitHub:         https://github.com/jdalberthal
-    Dependencies:   Requires PowerShell with .NET/WPF access. The following executables must be in
-                    the system's PATH or in the same directory as the script:
-                    - FFmpeg (ffmpeg.exe, ffplay.exe): https://www.ffmpeg.org/download.html
+    Dependencies:   Requires PowerShell with .NET/WPF access. Video playback is limited to formats
+                    supported by the built-in Windows MediaElement.
 #>
 
 Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
-# --- Script Metadata ---
-$ExternalButtonName = "Rotating Image/Video Sphere `n Uses Ffmpeg"
-$ScriptDescription = "Loops through and displays selected images or videos on a rotating 3D sphere. Uses FFmpeg for video decoding, providing broad format support."
-
-# --- Dependency Check ---
-$RequiredExecutables = @("ffmpeg.exe", "ffplay.exe")
-$dependencyStatus = @()
-$allDependenciesMet = $true
-
-foreach ($exe in $RequiredExecutables) {
-    $localPath = Join-Path $PSScriptRoot $exe
-    if ((Get-Command $exe -ErrorAction SilentlyContinue) -or (Test-Path -Path $localPath)) {
-        $dependencyStatus += [PSCustomObject]@{ Name = $exe; Status = 'Found' }
-    } else {
-        $dependencyStatus += [PSCustomObject]@{ Name = $exe; Status = 'NOT FOUND' }
-        $allDependenciesMet = $false
-    }
-}
-
-if (-not $allDependenciesMet) {
-    $messageLines = @(
-        "One or more required executables were not found in your system's PATH. Please install them and try again.",
-        "",
-        "Required executable status:"
-    )
-    foreach ($status in $dependencyStatus) { $messageLines += " - $($status.Status): $($status.Name)" }
-    $message = $messageLines -join "`n"
-    [System.Windows.Forms.MessageBox]::Show($message, "Dependency Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-    return # Exit the script
-}
 
 # --- Sphere Generation Function ---
 function New-SphereMesh {
@@ -83,7 +52,6 @@ function New-SphereMesh {
             $z = $r * [Math]::Sin($theta)
 
             $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, $y, $z))
-            # TextureCoordinates are required for a material brush to map correctly, even a solid color.
             $mesh.TextureCoordinates.Add([System.Windows.Point]::new($slice / $slices, $stack / $stacks))
         }
     }
@@ -91,13 +59,58 @@ function New-SphereMesh {
     # Add triangle indices
     for ($stack = 0; $stack -lt $stacks; $stack++) {
         for ($slice = 0; $slice -lt $slices; $slice++) {
-            $i0 = $stack * ($slices + 1) + $slice
-            $i1 = ($stack + 1) * ($slices + 1) + $slice
-
+            $i0 = $stack * ($slices + 1) + $slice; $i1 = ($stack + 1) * ($slices + 1) + $slice
             $mesh.TriangleIndices.Add($i0); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i0 + 1)
             $mesh.TriangleIndices.Add($i0 + 1); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i1 + 1)
         }
     }
+    return $mesh
+}
+
+# --- Cone Generation Function ---
+function New-ConeMesh {
+    param(
+        [double]$radius = 1.5,
+        [double]$height = 3.0,
+        [int]$slices = 64
+    )
+
+    $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D
+
+    # Apex vertex
+    $apexY = $height # Apex is now at the top
+    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, $apexY, 0))
+    $mesh.TextureCoordinates.Add([System.Windows.Point]::new(0.5, 0)) # Apex texture coord
+
+    # Base vertices
+    $baseY = 0 # Base is at the origin (Y=0)
+    for ($i = 0; $i -le $slices; $i++) {
+        $theta = $i * 2 * [Math]::PI / $slices
+        $x = $radius * [Math]::Cos($theta)
+        $z = $radius * [Math]::Sin($theta)
+        $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, $baseY, $z))
+        $mesh.TextureCoordinates.Add([System.Windows.Point]::new($i / $slices, 1))
+    }
+
+    # Base center vertex for the bottom cap
+    $baseCenterIndex = $mesh.Positions.Count
+    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, $baseY, 0))
+    $mesh.TextureCoordinates.Add([System.Windows.Point]::new(0.5, 0.5))
+
+    # Add triangle indices for the cone sides
+    for ($i = 0; $i -lt $slices; $i++) {
+        $mesh.TriangleIndices.Add(0)               # Apex
+        $mesh.TriangleIndices.Add($i + 2)
+        $mesh.TriangleIndices.Add($i + 1)
+    }
+
+    # Add triangle indices for the base cap
+    for ($i = 0; $i -lt $slices; $i++) {
+        $mesh.TriangleIndices.Add($baseCenterIndex)
+        $mesh.TriangleIndices.Add($i + 1)
+        $mesh.TriangleIndices.Add($i + 2)
+    }
+
     return $mesh
 }
 
@@ -106,7 +119,7 @@ while ($true) {
     # --- File Selection Form ---
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $SelectForm = New-Object System.Windows.Forms.Form
-    $SelectForm.Text = "Sphere - Media Selector"
+    $SelectForm.Text = "Star - Media Selector"
     $SelectForm.Size = New-Object System.Drawing.Size(800, 680)
     $SelectForm.StartPosition = "CenterScreen"
 
@@ -208,45 +221,64 @@ while ($true) {
     $RadioButton3.Add_Click($textOverlayEvent)
 
     # --- Event Handlers for Text Customization ---
-    $formState = @{ TextColor = [System.Drawing.Color]::Black }
+    # --- Script-scoped form state with safe defaults ---
+    $formState = @{
+      TextColor            = [System.Drawing.Color]::Black
+      FontFamily           = "Arial"
+      FontSize             = 24
+      IsBold               = $true
+      IsItalic             = $false
+    }
+
+    # Initialize the textbox font to match the default state
+    $initialFont = New-Object System.Drawing.Font($formState.FontFamily, [float]$formState.FontSize, [System.Drawing.FontStyle]::Bold)
+    $TextBox.Font = $initialFont
+
+    # Initialize the textbox font to match the default state
+    $initialFont = New-Object System.Drawing.Font($formState.FontFamily, [float]$formState.FontSize, [System.Drawing.FontStyle]::Bold)
+    $TextBox.Font = $initialFont
+
     $ColorExample.BackColor = $formState.TextColor
     $SelectColorButton.Add_Click({
         $colorDialog = New-Object System.Windows.Forms.ColorDialog
         if ($colorDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             $formState.TextColor = $colorDialog.Color
             $ColorExample.BackColor = $formState.TextColor
+            $TextBox.ForeColor = $formState.TextColor
         }
     })
 
-    $formState.FontFamily = "Arial"
     $FontButton.Add_Click({
         $fontDialog = New-Object System.Windows.Forms.FontDialog
-        if ($fontDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            $formState.FontFamily = $fontDialog.Font.Name
+        $currentFont = New-Object System.Drawing.Font($formState.FontFamily, [float]$NumericUpDown.Value)
+        $fontDialog.Font = $currentFont
+
+        if ($fontDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+        {
+            $selectedFont = $fontDialog.Font
+            $formState.FontFamily = $selectedFont.Name
             $FontButton.Text = $formState.FontFamily
+            $NumericUpDown.Value = [decimal]$selectedFont.Size
+            $BoldCheckbox.Checked = $selectedFont.Bold
+            $ItalicCheckbox.Checked = $selectedFont.Italic
+            & $updateTextBoxFont
         }
     })
 
-    $updateFontStyle = {
+    $updateTextBoxFont = {
         $style = [System.Drawing.FontStyle]::Regular
         if ($BoldCheckbox.Checked) { $style = $style -bor [System.Drawing.FontStyle]::Bold }
         if ($ItalicCheckbox.Checked) { $style = $style -bor [System.Drawing.FontStyle]::Italic }
-        
-        $currentFont = $TextBox.Font
-        $newFont = New-Object System.Drawing.Font($currentFont.FontFamily, $currentFont.Size, $style)
-        $TextBox.Font = $newFont
+        try {
+            $newFont = New-Object System.Drawing.Font($formState.FontFamily, [float]$NumericUpDown.Value, $style)
+            $TextBox.Font = $newFont
+        } catch {
+            $TextBox.Font = New-Object System.Drawing.Font("Arial", 12, $style)
+        }
     }
-    $ItalicCheckbox.Add_CheckedChanged($updateFontStyle)
-    $BoldCheckbox.Add_CheckedChanged($updateFontStyle)
-
-    $NumericUpDown.Add_ValueChanged({
-        $currentFont = $TextBox.Font
-        $newFont = New-Object System.Drawing.Font($currentFont.FontFamily, $NumericUpDown.Value, $currentFont.Style)
-        $TextBox.Font = $newFont
-    })
-
-    # Set initial font style
-    & $updateFontStyle
+    $NumericUpDown.Add_ValueChanged($updateTextBoxFont)
+    $ItalicCheckbox.Add_CheckedChanged($updateTextBoxFont)
+    $BoldCheckbox.Add_CheckedChanged($updateTextBoxFont)
 
 
     $SelectAllCheckbox.Add_CheckedChanged({
@@ -281,53 +313,13 @@ while ($true) {
             }
             $files = Get-ChildItem @gciParams
             foreach ($file in $files) {
-                $DataGridView.Rows.Add($false, [System.IO.Path]::GetFileName($file), $file)
+                $DataGridView.Rows.Add($false, [System.IO.Path]::GetFileName($file.FullName), $file.FullName)
             }
 
             foreach ($row in $DataGridView.Rows) {
                 if ($row.IsNewRow) { continue }
                 $row.HeaderCell.Value = "Play"
             }
-        }
-    })
-
-    $DataGridView.Add_RowHeaderMouseClick({
-        param($sender, $e)
-        if ($e.RowIndex -ge 0 -and $e.RowIndex -lt $DataGridView.Rows.Count) {
-            $row = $DataGridView.Rows[$e.RowIndex]
-            if ($row.IsNewRow) { return }
-            $filePath = $row.Cells["FilePath"].Value
-            if ([System.IO.File]::Exists($filePath)) {
-                Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
-            }
-        }
-    })
-
-
-    $PlayButton.Add_Click({
-        $formState.SelectedFiles = @(
-            foreach ($Row in $DataGridView.Rows) {
-                if ($Row.Cells["Select"].Value) {
-                    $Row.Cells["FilePath"].Value
-                }
-            }
-        )
-        if ($formState.SelectedFiles.Count -gt 0) {
-            $formState.UseTransparentEffect = $TransparentCheckbox.Checked
-            
-            # Capture text settings
-            if ($RadioButton1.Checked) { $formState.RbSelection = "Hidden" }
-            if ($RadioButton2.Checked) { $formState.RbSelection = "Filename" }
-            if ($RadioButton3.Checked) { $formState.RbSelection = "Custom" }
-            $formState.CustomText = $TextBox.Text
-            $formState.FontSize = $NumericUpDown.Value
-            $formState.IsBold = $BoldCheckbox.Checked
-            $formState.IsItalic = $ItalicCheckbox.Checked
-            # Color and Font Family are already updated in their respective event handlers
-
-            $SelectForm.Close()
-        } else {
-            [System.Windows.Forms.MessageBox]::Show("No files selected.", "Warning", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         }
     })
 
@@ -371,7 +363,7 @@ while ($true) {
                     <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
                     <Run Text="Left Arrow        :  &#x2190;  : Slow Down Spinning"/><LineBreak/>
                     <Run Text="Right Arrow       :  &#x2192;  : Speed Up Spinning"/><LineBreak/><LineBreak/>
-                    <Run Text="*Click sphere to Pause/Resume*"/><LineBreak/>
+                    <Run Text="*Click star to Pause/Resume*"/><LineBreak/>
                 </Paragraph>
             </FlowDocument>
         </RichTextBox>
@@ -379,6 +371,36 @@ while ($true) {
     </Grid>
 </Window>
 "@
+
+    $PlayButton.Add_Click({
+        $formState.SelectedFiles = @(
+            $selectedRows = $DataGridView.Rows | Where-Object { $_.Cells["Select"].Value -eq $true }
+            foreach ($row in $selectedRows) {
+                # The value is the full path string we added
+                $row.Cells["FilePath"].Value
+            }
+        )
+        if ($formState.SelectedFiles.Count -gt 0) {
+            $formState.UseTransparentEffect = $TransparentCheckbox.Checked
+            
+            # Capture text settings
+            if ($RadioButton1.Checked) { $formState.RbSelection = "Hidden" }
+            if ($RadioButton2.Checked) { $formState.RbSelection = "Filename" }
+            if ($RadioButton3.Checked) { $formState.RbSelection = "Custom" }
+            $formState.CustomText = $TextBox.Text
+
+            try {
+                $formState.FontSize = [double]$NumericUpDown.Value
+                if ($formState.FontSize -le 0) { $formState.FontSize = 24 }
+            } catch { $formState.FontSize = 24 }
+            $formState.IsBold   = $BoldCheckbox.Checked
+            $formState.IsItalic = $ItalicCheckbox.Checked
+
+            $SelectForm.Close()
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("No files selected.", "Warning", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        }
+    })
 
     $SelectForm.KeyPreview = $true
     $SelectForm.Add_KeyDown({
@@ -404,9 +426,8 @@ while ($true) {
     # --- Synchronized Hashtable for state management ---
     $SyncHash = [hashtable]::Synchronized(@{
         SelectedFiles = $formState.SelectedFiles
-        CurrentIndex = -1 # Will be incremented to 0 on first run
-        MediaTimer = $null
-        FfmpegProcess = $null
+        CurrentIndex = -1 # Global index, will be incremented before first use.
+        PlayerState = [hashtable]::Synchronized(@{})
         Paused = $false
         ControlsHidden = $false
         RedoClicked = $false
@@ -423,7 +444,7 @@ while ($true) {
 
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="SphereWindow"
         Title="Rotating Sphere"
         WindowStartupLocation="CenterScreen" 
         WindowStyle="None" AllowsTransparency="True" Background="Transparent">
@@ -433,8 +454,8 @@ while ($true) {
                 <PerspectiveCamera Position="0,0,8" LookDirection="0,0,-1" UpDirection="0,1,0" FieldOfView="60"/>
             </Viewport3D.Camera>
 
-            <!-- This ModelVisual3D will contain our lights and the sphere model -->
-            <ModelVisual3D x:Name="SphereContainer">
+            <!-- All 3D content must be inside a single root ModelVisual3D -->
+            <ModelVisual3D>
                 <ModelVisual3D.Content>
                     <Model3DGroup>
                         <!-- Lights -->
@@ -443,20 +464,26 @@ while ($true) {
                         <DirectionalLight Color="White" Direction="1,1,2"/>
                     </Model3DGroup>
                 </ModelVisual3D.Content>
-                <ModelVisual3D.Transform>
-                    <Transform3DGroup>
-                        <RotateTransform3D>
-                            <RotateTransform3D.Rotation>
-                                <AxisAngleRotation3D x:Name="AxisAngleX" Axis="1,0,0" Angle="0" />
-                            </RotateTransform3D.Rotation>
-                        </RotateTransform3D>
-                        <RotateTransform3D>
-                            <RotateTransform3D.Rotation>
-                                <AxisAngleRotation3D x:Name="AxisAngleY" Axis="0,1,0" Angle="0" />
-                            </RotateTransform3D.Rotation>
-                        </RotateTransform3D>
-                    </Transform3DGroup>
-                </ModelVisual3D.Transform>
+                <!-- This container will hold the rotating star object -->
+                <ModelVisual3D.Children>
+                    <ModelVisual3D x:Name="sceneContainer">
+                        <ModelVisual3D.Transform>
+                            <Transform3DGroup>
+                                <RotateTransform3D>
+                                    <RotateTransform3D.Rotation>
+                                        <AxisAngleRotation3D x:Name="AxisAngleX" Axis="1,0,0" Angle="0" />
+                                    </RotateTransform3D.Rotation>
+                                </RotateTransform3D>
+                                <RotateTransform3D>
+                                    <RotateTransform3D.Rotation>
+                                        <AxisAngleRotation3D x:Name="AxisAngleY" Axis="0,1,0" Angle="0" />
+                                    </RotateTransform3D.Rotation>
+                                </RotateTransform3D>
+                            </Transform3DGroup>
+                        </ModelVisual3D.Transform>
+                        <!-- The star's components will be added here via code -->
+                    </ModelVisual3D>
+                </ModelVisual3D.Children>
             </ModelVisual3D>
         </Viewport3D>
         <StackPanel Name="controlsPanel" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
@@ -484,7 +511,7 @@ while ($true) {
 
 
     # --- Find the container for our sphere ---
-    $sphereContainer = $window.FindName("SphereContainer")
+    $sceneContainer = $window.FindName("sceneContainer")
     $SyncHash.Window = $window # Store window for event handlers
 
     # --- Find UI Controls ---
@@ -492,165 +519,307 @@ while ($true) {
     $SyncHash.randomAxisButton = $window.FindName("randomAxisButton")
     $SyncHash.slowDownButton = $window.FindName("slowDownButton")
     $SyncHash.speedUpButton = $window.FindName("speedUpButton")
-    $SyncHash.redoButton = $window.FindName("redoButton")
+    $SyncHash.redoButton = $window.FindName("redoButton") # Corrected from SphereWindow
     $SyncHash.hideControlsButton = $window.FindName("hideControlsButton")
     $SyncHash.closeButton = $window.FindName("closeButton")
+    $window.Title = "Rotating Cone"
 
-    # --- Create the Sphere using Viewport2DVisual3D for robust media display ---
-    # Calculate a dynamic radius to make the sphere's height a percentage of the viewport height.
+    # --- Create the Cone using Viewport2DVisual3D for robust media display ---
+    # Calculate a dynamic size to make the cone's height a percentage of the viewport height.
     $cameraDistance = 8.0
     $cameraFovDegrees = 60.0
     $cameraFovRadians = $cameraFovDegrees * ([Math]::PI / 180.0)
     $visibleHeightAtOrigin = 2.0 * $cameraDistance * [Math]::Tan($cameraFovRadians / 2.0)
 
-    $desiredHeightPercentage = 0.50 # 50% of the viewport height, which matches the visual of radius 2.3
-    $dynamicRadius = ($visibleHeightAtOrigin * $desiredHeightPercentage) / 2.0
-    $sphereMesh = New-SphereMesh -radius $dynamicRadius -slices 128 -stacks 64
+    # --- Define the geometry for all three objects ---
+    # Define the total height of the composite object to be a percentage of the visible viewport height.
+    $totalObjectHeight = $visibleHeightAtOrigin * 0.75 # Reduced from 0.90 to make it smaller
 
-    # Create the 3D visual element for the sphere
-    $sphereViewport = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D
-    $sphereViewport.Geometry = $sphereMesh
+    # The total height is (coneHeight + sphereRadius) * 2. The cone height is 1.5 * sphereRadius.
+    # So, totalHeight = (1.5 * sphereRadius + sphereRadius) * 2 = 2.5 * sphereRadius * 2 = 5 * sphereRadius.
+    $sphereRadius = ($totalObjectHeight / 5.0) * 0.5 # Shrink sphere by 50%
+    $coneHeight = ($sphereRadius * 1.5) * 2.0 # Double the cone height relative to the sphere
+    $coneRadius = ($sphereRadius * 0.4) * 2.0 # Double the cone radius relative to the sphere
+
+    # 1. Central Sphere
+    $sphereMesh = New-SphereMesh -radius $sphereRadius -slices 128 -stacks 64
+
+    # 2. Cone Meshes (we use the same mesh and transform it for each point of the star)
+    $coneMesh = New-ConeMesh -radius $coneRadius -height $coneHeight -slices 128
+
+    # --- Create Visuals and Materials for all three objects ---
+    $topConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+    $middleSphereVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $sphereMesh }
+    $bottomConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+    $leftConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+    $rightConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+    $frontConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+    $backConeVisual = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D -Property @{ Geometry = $coneMesh }
+
+    # --- Position the cones using Transforms (This is the key fix for the rotation issue) ---
+    # Top Cone: Translate it up by the sphere's radius
+    $topTransform = New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)
+    $topConeVisual.Transform = $topTransform
+
+    # Bottom Cone: Invert it on Y-axis, then translate it down
+    $bottomTransformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
+    $bottomTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.ScaleTransform3D(1, -1, 1)))
+    $bottomTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, -$sphereRadius, 0)))
+    $bottomConeVisual.Transform = $bottomTransformGroup
+
+    # Right Cone: Translate it up, then rotate it 90 degrees around Z-axis to point right
+    $rightTransformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
+    $rightTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)))
+    $rightTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D((New-Object System.Windows.Media.Media3D.AxisAngleRotation3D([System.Windows.Media.Media3D.Vector3D]::new(0,0,1), -90)))))
+    $rightConeVisual.Transform = $rightTransformGroup
+
+    # Left Cone: Translate it up, then rotate it -90 degrees around Z-axis to point left
+    $leftTransformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
+    $leftTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)))
+    $leftTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D((New-Object System.Windows.Media.Media3D.AxisAngleRotation3D([System.Windows.Media.Media3D.Vector3D]::new(0,0,1), 90)))))
+    $leftConeVisual.Transform = $leftTransformGroup
+
+    # Front Cone: Translate it up, then rotate it -90 degrees around X-axis to point forward
+    $frontTransformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
+    $frontTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)))
+    $frontTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D((New-Object System.Windows.Media.Media3D.AxisAngleRotation3D([System.Windows.Media.Media3D.Vector3D]::new(1,0,0), -90)))))
+    $frontConeVisual.Transform = $frontTransformGroup
+
+    # Back Cone: Translate it up, then rotate it 90 degrees around X-axis to point backward
+    $backTransformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
+    $backTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.TranslateTransform3D(0, $sphereRadius, 0)))
+    $backTransformGroup.Children.Add((New-Object System.Windows.Media.Media3D.RotateTransform3D((New-Object System.Windows.Media.Media3D.AxisAngleRotation3D([System.Windows.Media.Media3D.Vector3D]::new(1,0,0), 90)))))
+    $backConeVisual.Transform = $backTransformGroup
 
     # Create the material and link it to the visual host
     $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
     $sphereMaterial = New-Object $materialType
     [System.Windows.Media.Media3D.Viewport2DVisual3D]::SetIsVisualHostMaterial($sphereMaterial, $true)
-    $sphereViewport.Material = $sphereMaterial
+    $topConeVisual.Material = $sphereMaterial
+    $middleSphereVisual.Material = $sphereMaterial.Clone()
+    $bottomConeVisual.Material = $sphereMaterial.Clone()
+    $leftConeVisual.Material = $sphereMaterial.Clone()
+    $rightConeVisual.Material = $sphereMaterial.Clone()
+    $frontConeVisual.Material = $sphereMaterial.Clone()
+    $backConeVisual.Material = $sphereMaterial.Clone()
 
-    # Create the 2D content host (Grid and ContentPresenter) that will be displayed on the sphere
-    $mediaHostGrid = New-Object System.Windows.Controls.Grid
-    $mediaHostGrid.Background = [System.Windows.Media.Brushes]::White # Start with a visible background
-    $contentPresenter = New-Object System.Windows.Controls.ContentPresenter
-    $mediaHostGrid.Children.Add($contentPresenter)
+    # --- Create separate 2D content hosts, one for each object ---
+    function New-MediaHost { param([string]$TargetName)
+        $grid = New-Object System.Windows.Controls.Grid
+        $grid.Background = [System.Windows.Media.Brushes]::White
+        
+        $mediaElement = New-Object System.Windows.Controls.MediaElement -Property @{
+            Name = "mediaElement_$TargetName"; Stretch = "Fill"; LoadedBehavior = "Manual"; UnloadedBehavior = "Stop"
+        }
+        $grid.Children.Add($mediaElement)
 
-    # Create and add the text overlay block
-    $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
-        HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'
-        TextWrapping = 'Wrap'; TextAlignment = 'Center'; IsHitTestVisible = $false;
+        $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
+            HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'; TextWrapping = 'Wrap'; TextAlignment = 'Center'; IsHitTestVisible = $false
+        }
+        $grid.Children.Add($overlayTextBlock)
+
+        $errorTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
+            Name = "errorTextBlock_$TargetName"; Foreground = [System.Windows.Media.Brushes]::Red; VerticalAlignment = 'Center'; HorizontalAlignment = 'Center'; Visibility = 'Collapsed'; TextWrapping = 'Wrap'
+        }
+        $grid.Children.Add($errorTextBlock)
+
+        return @{ Grid = $grid; MediaElement = $mediaElement; OverlayTextBlock = $overlayTextBlock; ErrorTextBlock = $errorTextBlock }
     }
-    $mediaHostGrid.Children.Add($overlayTextBlock)
 
-    # Set the 2D Grid as the "Visual" for our 3D sphere viewport
-    $sphereViewport.Visual = $mediaHostGrid
+    $targets = @("Top", "Middle", "Bottom", "Left", "Right", "Front", "Back")
+    foreach ($target in $targets) {
+        $hosts = New-MediaHost -TargetName $target
+        $SyncHash."${target}MediaElement" = $hosts.MediaElement
+        $SyncHash."${target}OverlayTextBlock" = $hosts.OverlayTextBlock
+        $SyncHash."${target}ErrorTextBlock" = $hosts.ErrorTextBlock
 
-    # Add the sphere to the main scene
-    $sphereContainer.Children.Add($sphereViewport)
+        # Assign the grid to the visual property of the corresponding 3D object
+        $visual3D = Get-Variable -Name "${target}ConeVisual" -ValueOnly -ErrorAction SilentlyContinue
+        if (-not $visual3D) { $visual3D = Get-Variable -Name "${target}SphereVisual" -ValueOnly } # For the middle sphere
+        $visual3D.Visual = $hosts.Grid
 
-    # --- Media Handling Functions ---
-    # Store the content presenter in the synchash for easy access
-    $SyncHash.ContentPresenter = $contentPresenter
-    $SyncHash.OverlayTextBlock = $overlayTextBlock
+        # Initialize player state
+        $SyncHash.PlayerState[$hosts.MediaElement.Name] = [hashtable]::Synchronized(@{
+            Target = $target
+            IsImage = $false
+            ImageTimer = $null
+            RecoveryTimer = $null
+            PlaybackStopwatch = New-Object System.Diagnostics.Stopwatch
+            IsFailed = $false
+        })
+    }
 
+    $topHosts = New-MediaHost -TargetName "Top"
+    $middleHosts = New-MediaHost -TargetName "Middle"
+    $bottomHosts = New-MediaHost -TargetName "Bottom"
+    $leftHosts = New-MediaHost -TargetName "Left"
+    $rightHosts = New-MediaHost -TargetName "Right"
+    $frontHosts = New-MediaHost -TargetName "Front"
+    $backHosts = New-MediaHost -TargetName "Back"
+
+    $topConeVisual.Visual = $topHosts.Grid
+    $middleSphereVisual.Visual = $middleHosts.Grid
+    $bottomConeVisual.Visual = $bottomHosts.Grid
+    $leftConeVisual.Visual = $leftHosts.Grid
+    $rightConeVisual.Visual = $rightHosts.Grid
+    $frontConeVisual.Visual = $frontHosts.Grid
+    $backConeVisual.Visual = $backHosts.Grid
+
+    # Add all objects to the main scene so they rotate together
+    $sceneContainer.Children.Add($topConeVisual)
+    $sceneContainer.Children.Add($middleSphereVisual)
+    $sceneContainer.Children.Add($bottomConeVisual)
+    $sceneContainer.Children.Add($leftConeVisual)
+    $sceneContainer.Children.Add($rightConeVisual)
+    $sceneContainer.Children.Add($frontConeVisual)
+    $sceneContainer.Children.Add($backConeVisual)
+
+    # Store all media elements and text blocks in the synchash
+    $SyncHash.TopMediaElement = $topHosts.MediaElement
+    $SyncHash.TopOverlayTextBlock = $topHosts.OverlayTextBlock
+    $SyncHash.TopErrorTextBlock = $topHosts.ErrorTextBlock
+    $SyncHash.MiddleMediaElement = $middleHosts.MediaElement
+    $SyncHash.MiddleOverlayTextBlock = $middleHosts.OverlayTextBlock
+    $SyncHash.MiddleErrorTextBlock = $middleHosts.ErrorTextBlock
+    $SyncHash.BottomMediaElement = $bottomHosts.MediaElement
+    $SyncHash.BottomOverlayTextBlock = $bottomHosts.OverlayTextBlock
+    $SyncHash.BottomErrorTextBlock = $bottomHosts.ErrorTextBlock
+    $SyncHash.LeftMediaElement = $leftHosts.MediaElement
+    $SyncHash.LeftOverlayTextBlock = $leftHosts.OverlayTextBlock
+    $SyncHash.LeftErrorTextBlock = $leftHosts.ErrorTextBlock
+    $SyncHash.RightMediaElement = $rightHosts.MediaElement
+    $SyncHash.RightOverlayTextBlock = $rightHosts.OverlayTextBlock
+    $SyncHash.RightErrorTextBlock = $rightHosts.ErrorTextBlock
+    $SyncHash.FrontMediaElement = $frontHosts.MediaElement
+    $SyncHash.FrontOverlayTextBlock = $frontHosts.OverlayTextBlock
+    $SyncHash.FrontErrorTextBlock = $frontHosts.ErrorTextBlock
+    $SyncHash.BackMediaElement = $backHosts.MediaElement
+    $SyncHash.BackOverlayTextBlock = $backHosts.OverlayTextBlock
+    $SyncHash.BackErrorTextBlock = $backHosts.ErrorTextBlock
+
+    # --- Media Handling Logic (Adapted from Cube Script) ---
+    $ImageExtensions = ".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico"
 
     function Start-NextMedia {
-        # Clean up previous media resources
-        if ($SyncHash.MediaTimer) { $SyncHash.MediaTimer.Stop() }
-        if ($SyncHash.FfmpegProcess -and -not $SyncHash.FfmpegProcess.HasExited) {
-            $SyncHash.FfmpegProcess.Kill()
-            $SyncHash.FfmpegProcess.Dispose()
-            $SyncHash.FfmpegProcess = $null
-        }
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Target # 'Top', 'Middle', 'Bottom', 'Left', 'Right', 'Front', 'Back'
+        )
+        $mediaElement = $SyncHash."${Target}MediaElement"
+        $playerState = $SyncHash.PlayerState[$mediaElement.Name]
 
-        # Get next media file, looping if necessary
         $SyncHash.CurrentIndex = ($SyncHash.CurrentIndex + 1) % $SyncHash.SelectedFiles.Count
-        $filePath = $SyncHash.SelectedFiles[$SyncHash.CurrentIndex]
+        $fileObject = $SyncHash.SelectedFiles[$SyncHash.CurrentIndex]
+        $uri = [System.Uri]$fileObject # This now correctly uses the string path
 
         # Update text overlay if set to "Filename"
         if ($SyncHash.RbSelection -eq "Filename") {
-            $SyncHash.OverlayTextBlock.Text = [System.IO.Path]::GetFileName($filePath)
+            $SyncHash."${Target}OverlayTextBlock".Text = [System.IO.Path]::GetFileName($fileObject)
         }
 
-        $ImageExtensions = ".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico"
-        $extension = [System.IO.Path]::GetExtension($filePath).ToLower()
-
-        if ($ImageExtensions -contains $extension) {
-            Start-ImageOnSphere -FilePath $filePath
-        } else {
-            Start-VideoOnSphere -FilePath $filePath
-        }
+        $extension = [System.IO.Path]::GetExtension($fileObject).ToLower()
+        $playerState.IsImage = ($ImageExtensions -contains $extension)
+        $mediaElement.Source = $uri
+        $mediaElement.Play()
     }
 
-    function Start-ImageOnSphere {
-        param([string]$FilePath)
+    $HandleMediaFailure = {
+        param($ErrorElement, [string]$Reason = "Unknown Error")
+        $SyncHash.Window.Dispatcher.Invoke([action]{
+            $playerState = $SyncHash.PlayerState[$ErrorElement.Name]
+            if ($playerState.IsFailed) { return }
+            $playerState.IsFailed = $true
 
-        $image = New-Object System.Windows.Controls.Image
-        $image.Source = [System.Windows.Media.Imaging.BitmapImage]::new([Uri]$FilePath)
-        $image.Stretch = "Fill"
-        $SyncHash.ContentPresenter.Content = $image
+            $fileName = if ($ErrorElement.Source) { [System.IO.Path]::GetFileName($ErrorElement.Source.LocalPath) } else { "an unknown media file" }
+            $errorText = "Error: $($fileName)`n$Reason"
+            $SyncHash."$($playerState.Target)ErrorTextBlock".Text = $errorText
+            $SyncHash."$($playerState.Target)ErrorTextBlock".Visibility = "Visible"
+            $ErrorElement.Visibility = "Collapsed"
+            $ErrorElement.Stop()
 
-        # Set a timer to show the next media item after 10 seconds
-        $timer = New-Object System.Windows.Threading.DispatcherTimer
-        $timer.Interval = [TimeSpan]::FromSeconds(10)
-        $timer.Add_Tick({
-            # The timer object is passed as the first argument to the Tick event.
-            $thisTimer = $args[0]
-            $thisTimer.Stop()
-            Start-NextMedia
+            if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
+            $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer
+            $recoveryTimer.Interval = [TimeSpan]::FromSeconds(10)
+            $recoveryTimer.Tag = $ErrorElement
+            $recoveryTick = {
+                $timer = $args[0]; $failedElement = $timer.Tag; $timer.Stop()
+                $SyncHash.PlayerState[$failedElement.Name].IsFailed = $false
+                & $MediaEndedHandler -Sender $failedElement -e $null -IsRecovery
+            }
+            $recoveryTimer.Add_Tick($recoveryTick)
+            $playerState.RecoveryTimer = $recoveryTimer
+            $recoveryTimer.Start()
         })
-        $timer.Start()
-        $SyncHash.MediaTimer = $timer
     }
 
-    function Start-VideoOnSphere {
-        param([string]$FilePath)
+    $MediaFailedHandler = {
+        param($Sender, $EventArgs)
+        $reason = if ($EventArgs.ErrorException) { $EventArgs.ErrorException.Message } else { "MediaFailed event fired." }
+        & $HandleMediaFailure -ErrorElement $Sender -Reason $reason
+    }
 
-        $width = 1280
-        $height = 720
-        $frameSize = $width * $height * 3 # Bgr24 is 3 bytes per pixel
+    $MediaOpenedHandler = {
+        param($Sender, $EventArgs)
+        $playerState = $SyncHash.PlayerState[$Sender.Name]
+        $playerState.IsFailed = $false
+        $playerState.PlaybackStopwatch.Restart()
 
-        $bitmap = [System.Windows.Media.Imaging.WriteableBitmap]::new($width, $height, 96, 96, [System.Windows.Media.PixelFormats]::Bgr24, $null)
-        $imageControl = New-Object System.Windows.Controls.Image
-        $imageControl.Source = $bitmap
-        $imageControl.Stretch = "Fill"
-        $SyncHash.ContentPresenter.Content = $imageControl
+        $SyncHash.Window.Dispatcher.Invoke([action]{
+            $Sender.Visibility = "Visible"
+            $SyncHash."$($playerState.Target)ErrorTextBlock".Visibility = "Collapsed"
+        })
 
-        # Start ffmpeg to stream frames
-        $args = "-hide_banner -loglevel error -i `"$FilePath`" -f rawvideo -pix_fmt bgr24 -vf scale=${width}:${height} -"
-        $psi = New-Object System.Diagnostics.ProcessStartInfo -Property @{
-            FileName = "ffmpeg.exe"; Arguments = $args; RedirectStandardOutput = $true
-            UseShellExecute = $false; CreateNoWindow = $true
+        if ($playerState.IsImage) {
+            $Sender.Pause()
+            if ($SyncHash.SelectedFiles.Count -gt $targets.Count) {
+                if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
+                $playerState.ImageTimer = New-Object System.Windows.Threading.DispatcherTimer
+                $playerState.ImageTimer.Interval = [TimeSpan]::FromSeconds(10)
+                $playerState.ImageTimer.Tag = $Sender
+                $tickScriptBlock = {
+                    $timer = $args[0]; $mediaElement = $timer.Tag; $timer.Stop()
+                    & $MediaEndedHandler -Sender $mediaElement -e $null
+                }
+                $playerState.ImageTimer.Add_Tick($tickScriptBlock)
+                $playerState.ImageTimer.Start()
+            }
+        } elseif (-not $Sender.NaturalDuration.HasTimeSpan) {
+            & $HandleMediaFailure -ErrorElement $Sender -Reason "No duration found (bad codec/file)."
+        } else {
+            if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
         }
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        $SyncHash.FfmpegProcess = $proc
+    }
 
-        $stream = $proc.StandardOutput.BaseStream
-        $bytes = New-Object byte[] $frameSize
-        $rect = [System.Windows.Int32Rect]::new(0, 0, $width, $height)
-        $stride = $width * 3
+    $MediaEndedHandler = {
+        param($Sender, $e, [switch]$IsRecovery)
+        if (-not $Sender -or -not $Sender.Name) { return }
+        $playerState = $SyncHash.PlayerState[$Sender.Name]
+        if ($playerState.IsFailed) { return }
 
-        # Set a timer to read frames from ffmpeg
-        $timer = New-Object System.Windows.Threading.DispatcherTimer
-        $timer.Interval = [TimeSpan]::FromMilliseconds(33) # ~30fps
-
-        $tickScriptBlock = {
-            try {
-                $totalRead = 0
-                while ($totalRead -lt $frameSize) {
-                    $read = $stream.Read($bytes, $totalRead, $frameSize - $totalRead)
-                    if ($read -le 0) { # End of stream
-                        Start-NextMedia
-                        return # Exit this tick
-                    }
-                    $totalRead += $read
-                }
-
-                if ($totalRead -eq $frameSize) {
-                    $bitmap.Lock()
-                    $bitmap.WritePixels($rect, $bytes, $stride, 0)
-                    $bitmap.Unlock()
-                }
-            } catch {
-                # An error likely means the process was killed or stream closed.
-                # Stop the timer to prevent further errors.
-                $timer.Stop()
+        if (-not $IsRecovery) {
+            $playerState.PlaybackStopwatch.Stop()
+            if (($playerState.PlaybackStopwatch.Elapsed.TotalMilliseconds -lt 2000) -and (-not $playerState.IsImage)) {
+                & $HandleMediaFailure -ErrorElement $Sender -Reason "Playback ended instantly."
+                return
             }
         }
-        $timer.Add_Tick($tickScriptBlock.GetNewClosure())
-        $timer.Start()
-        $SyncHash.MediaTimer = $timer
+
+        if ($SyncHash.SelectedFiles.Count -le $targets.Count) {
+            $Sender.Position = [TimeSpan]::FromSeconds(0)
+            $Sender.Play()
+        } else {
+            Start-NextMedia -Target $playerState.Target
+        }
     }
 
-    # --- Animate the Sphere ---
+    foreach ($target in $targets) {
+        $mediaElement = $SyncHash."${target}MediaElement"
+        $mediaElement.Add_MediaFailed($MediaFailedHandler)
+        $mediaElement.Add_MediaOpened($MediaOpenedHandler)
+        $mediaElement.Add_MediaEnded($MediaEndedHandler)
+    }
+
+    # --- Animate the Cone ---
     $animX = New-Object System.Windows.Media.Animation.DoubleAnimation(0, 360, [TimeSpan]::FromSeconds(20))
     $animX.RepeatBehavior = [Windows.Media.Animation.RepeatBehavior]::Forever
     $axisAngleX = $window.FindName("AxisAngleX")
@@ -784,11 +953,20 @@ while ($true) {
 
     $window.Add_Closed({
         # Stop animations to prevent resource leaks
-        if ($SyncHash.MediaTimer) { $SyncHash.MediaTimer.Stop() }
-        if ($SyncHash.FfmpegProcess -and -not $SyncHash.FfmpegProcess.HasExited) {
-            $SyncHash.FfmpegProcess.Kill()
-            $SyncHash.FfmpegProcess.Dispose()
+        foreach ($playerName in $SyncHash.PlayerState.Keys) {
+            $playerState = $SyncHash.PlayerState[$playerName]
+            if ($playerState) {
+                if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
+                if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
+            }
         }
+        foreach ($target in $targets) {
+            $mediaElement = $SyncHash."${target}MediaElement"
+            $mediaElement.Stop()
+            $mediaElement.Source = $null
+            $mediaElement.Close()
+        }
+
         $axisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
         $axisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
     })
@@ -796,31 +974,33 @@ while ($true) {
     # --- Start the show ---
     $window.Add_Loaded({
         # Start the media cycle once the window is fully loaded
-        Start-NextMedia
+        foreach ($target in $targets) { Start-NextMedia -Target $target }
     })
 
     # --- Apply Text Overlay Settings on Load ---
-    switch ($SyncHash.RbSelection) {
-        "Hidden" {
-            $SyncHash.OverlayTextBlock.Visibility = 'Collapsed'
+    foreach ($target in $targets) {
+        $textBlock = $SyncHash."${target}OverlayTextBlock"
+        switch ($SyncHash.RbSelection) {
+            "Hidden" {
+                $textBlock.Visibility = 'Collapsed'
+            }
+            "Filename" {
+                # Text is set in Start-NextMedia
+            }
+            "Custom" {
+                $textBlock.Text = $SyncHash.CustomText
+            }
         }
-        "Filename" {
-            # Text is set in Start-NextMedia
-        }
-        "Custom" {
-            $SyncHash.OverlayTextBlock.Text = $SyncHash.CustomText
+
+        if ($SyncHash.RbSelection -ne "Hidden") {
+            $mediaColor = [System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B)
+            $textBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush($mediaColor)
+            $textBlock.FontFamily = New-Object System.Windows.Media.FontFamily($SyncHash.FontFamily)
+            $textBlock.FontSize = $SyncHash.FontSize
+            if ($SyncHash.IsBold) { $textBlock.FontWeight = 'Bold' }
+            if ($SyncHash.IsItalic) { $textBlock.FontStyle = 'Italic' }
         }
     }
-
-    if ($SyncHash.RbSelection -ne "Hidden") {
-        $mediaColor = [System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B)
-        $SyncHash.OverlayTextBlock.Foreground = New-Object System.Windows.Media.SolidColorBrush($mediaColor)
-        $SyncHash.OverlayTextBlock.FontFamily = New-Object System.Windows.Media.FontFamily($SyncHash.FontFamily)
-        $SyncHash.OverlayTextBlock.FontSize = $SyncHash.FontSize
-        if ($SyncHash.IsBold) { $SyncHash.OverlayTextBlock.FontWeight = 'Bold' }
-        if ($SyncHash.IsItalic) { $SyncHash.OverlayTextBlock.FontStyle = 'Italic' }
-    }
-
 
     $null = $window.ShowDialog()
 

@@ -58,7 +58,7 @@ if ($dependenciesMissing) {
 }
 
 # --- Pie Slice Generation Function ---
-function New-PieSliceModel {
+function New-WagonWheelSliceModel {
     param(
         [double]$radius = 1.5,
         [double]$height = 0.5,
@@ -174,7 +174,7 @@ while ($true) {
     # -------------------- File Selection Form --------------------
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $SelectForm = New-Object System.Windows.Forms.Form
-    $SelectForm.Text = "Pie Slice Media Selector"
+    $SelectForm.Text = "Wagon Wheel Media Selector"
     $SelectForm.Size = New-Object System.Drawing.Size(800, 680)
     $SelectForm.StartPosition = "CenterScreen"
 
@@ -208,6 +208,55 @@ while ($true) {
 
     $PlayButton = New-Object System.Windows.Forms.Button -Property @{ Text = "Play Selected"; Location = '600, 40'; Size = '170, 30' }
     $SelectForm.Controls.Add($PlayButton)
+
+    $HelpLabel = New-Object System.Windows.Forms.Label -Property @{
+        Text      = "F1 - Help"
+        AutoSize  = $true
+        Location  = '700, 10'
+    }
+    $SelectForm.Controls.Add($HelpLabel)
+
+    [xml]$XamlHelpPopup = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Help" Height="360" Width="450" WindowStartupLocation="CenterScreen">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <RichTextBox x:Name="MyRichTextBox" Grid.Row="0" Margin="5" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+            <FlowDocument>
+                <FlowDocument.Resources>
+                    <Style TargetType="{x:Type Paragraph}">
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </FlowDocument.Resources>
+                <Paragraph>
+                    <Run Text="Hopefully the selection dialog is self-explanatory. :-)"/><LineBreak/>
+                    <Run Text=" "/>
+                </Paragraph>
+                <Paragraph>
+                    <Run Text="Commands for after media is playing:"/><LineBreak/>
+                </Paragraph>    
+                <Paragraph TextAlignment="Left" FontFamily="Consolas">
+                    <Bold><Run Text="Button            : Key : Action" TextDecorations="Underline"/><LineBreak/></Bold>
+                    <Run Text="X                 : Esc : Exit"/><LineBreak/>
+                    <Run Text="Pause/Resume      :  P  : Pause/Resume Spinning"/><LineBreak/>
+                    <Run Text="Redo              :  R  : Reselect Media"/><LineBreak/>
+                    <Run Text="Random Axis       :  A  : Change Rotation Axis"/><LineBreak/>
+                    <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
+                    <Run Text="Left Arrow        :  &#x2190;  : Slow Down Spinning"/><LineBreak/>
+                    <Run Text="Right Arrow       :  &#x2192;  : Speed Up Spinning"/><LineBreak/><LineBreak/>
+                    <Run Text="*Click wheel to Pause/Resume*"/><LineBreak/>
+                </Paragraph>
+            </FlowDocument>
+        </RichTextBox>
+        <Button x:Name="OKButton" Grid.Row="1" Content="OK" HorizontalAlignment="Right" Width="80" Height="30" Margin="0,10,0,0" IsDefault="True"/>
+    </Grid>
+</Window>
+"@
 
     $DataGridView.Add_RowHeaderMouseClick({
         param($sender, $e)
@@ -392,6 +441,18 @@ while ($true) {
         }
     })
 
+    $SelectForm.KeyPreview = $true
+    $SelectForm.Add_KeyDown({
+        param($sender, $e)
+        if ($e.KeyCode -eq "F1") {
+            $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
+            $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+            $OkButton = $PopupWindow.FindName("OKButton")
+            $OkButton.Add_Click({ $PopupWindow.Close() })
+            $PopupWindow.ShowDialog() | Out-Null
+        }
+    })
+
     $null = $SelectForm.ShowDialog()
     $SelectForm.Dispose()
 
@@ -404,7 +465,7 @@ while ($true) {
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Rotating Pie"
+        Title="Rotating Wagon Wheel"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent">
   <Grid x:Name="MainGrid">
@@ -412,7 +473,7 @@ while ($true) {
       <Viewport3D.Camera>
         <PerspectiveCamera Position="0,0,8" LookDirection="0,0,-1" UpDirection="0,1,0" FieldOfView="60"/>
       </Viewport3D.Camera>
-      <ModelVisual3D x:Name="PieContainer">
+      <ModelVisual3D x:Name="WheelContainer">
         <ModelVisual3D.Content>
           <Model3DGroup>
             <AmbientLight Color="Gray"/>
@@ -470,8 +531,8 @@ while ($true) {
     $reader = New-Object System.Xml.XmlNodeReader $xaml
     $window = [Windows.Markup.XamlReader]::Load($reader)
     $SyncHash.Window = $window
-
-    $pieContainer = $window.FindName("PieContainer")
+    
+    $wheelContainer = $window.FindName("WheelContainer")
 
     $primaryScreen = [System.Windows.Forms.Screen]::PrimaryScreen
     $window.Width = $primaryScreen.WorkingArea.Width
@@ -495,7 +556,7 @@ while ($true) {
 
     for ($i = 0; $i -lt $numberOfSlices; $i++) {
         $startAngle = $i * $sliceAngle
-        $sliceParts = New-PieSliceModel -radius $dynamicRadius -startAngleDeg $startAngle -sliceAngleDeg $sliceAngle
+        $sliceParts = New-WagonWheelSliceModel -radius $dynamicRadius -startAngleDeg $startAngle -sliceAngleDeg $sliceAngle
         $sliceOuterFaceModels.Add($sliceParts.OuterFaceModel)
 
         $imageControl = New-Object System.Windows.Controls.Image -Property @{ Stretch = 'Fill' }
@@ -520,7 +581,7 @@ while ($true) {
         if ($SyncHash.UseTransparentEffect) { $material.Color = [System.Windows.Media.Colors]::White }
 
         $sliceParts.OuterFaceModel.Material = $material
-        $pieContainer.Content.Children.Add($sliceParts.FullSliceModel)
+        $wheelContainer.Content.Children.Add($sliceParts.FullSliceModel)
     }
     $SyncHash.SliceOuterFaceModels = $sliceOuterFaceModels
 
@@ -725,6 +786,16 @@ while ($true) {
             "H"      { $SyncHash.hideControlsButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
             "Left"   { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
             "Right"  { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+            "F1"
+            {
+                $ReaderPopup = (New-Object System.Xml.XmlNodeReader $XamlHelpPopup)
+                $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+                $OkButton = $PopupWindow.FindName("OKButton")
+                $OkButton.Add_Click({
+                        $PopupWindow.Close()
+                    })
+                $PopupWindow.ShowDialog() | Out-Null
+            }
         }
     })
     $mainGrid = $window.FindName("MainGrid")

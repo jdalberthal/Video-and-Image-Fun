@@ -1,63 +1,41 @@
 <#
 .SYNOPSIS
-    Displays selected images and videos on the faces of six floating, rotating 3D cubes using FFmpeg.
+    Displays selected images and videos on the surfaces of six floating, rotating 3D spheres using MediaElement.
 
 .DESCRIPTION
-    This script launches a GUI to select image and video files, then renders them onto the faces
-    of six independently moving and rotating 3D cubes in a WPF window. This creates a "zero-gravity"
+    This script launches a GUI to select image and video files, then renders them onto the surfaces
+    of six independently moving and rotating 3D spheres in a WPF window. This creates a "zero-gravity"
     or "space" visual effect.
 
-    This version uses FFmpeg for video decoding, providing support for a wide range of video formats
-    without relying on system-installed codecs.
+    This version uses the built-in Windows MediaElement for video playback. As a result, video
+    format support is limited to the codecs installed on the local system (e.g., MP4, WMV, AVI).
 
     The 3D view is interactive, with controls to pause the animation, change the rotation speed,
-    and hide the UI for an unobstructed view. It also supports text overlays on the cube faces.
+    and hide the UI for an unobstructed view. It also supports text overlays on the sphere surfaces.
 
 .EXAMPLE
-    PS C:\> .\Show-ImagesVideosFloatingCubesFfmpeg.ps1
+    PS C:\> .\Show-ImagesVideosFloatingSpheresMediaElement.ps1
 
     Launches the file selection GUI. After selecting at least one file and clicking "Play", the
-    script will launch the 3D cube window with six floating cubes.
+    script will launch the 3D window with six floating spheres.
 
 .NOTES
-    Name:           Show-ImagesVideosFloatingCubesFfmpeg.ps1
-    Version:        1.0.0, 10/26/2025
+    Name:           Show-ImagesVideosFloatingSpheresMediaElement.ps1
+    Version:        1.0.0, 11/06/2025
     Author:         JD Alberthal (jd@jdalberthal.com)
     Website:        https://www.jdalberthal.com
     GitHub:         https://github.com/jdalberthal
-    Dependencies:   Requires PowerShell with .NET/WPF access. The following executables must be in
-                    the system's PATH or in the same directory as the script:
-                    - FFmpeg (ffmpeg.exe, ffprobe.exe, ffplay.exe): https://www.ffmpeg.org/download.html
+    Dependencies:   Requires PowerShell with .NET/WPF access. Video playback is limited to formats
+                    supported by the built-in Windows MediaElement.
 #>
 Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
 # --- Script Metadata ---
-$ExternalButtonName = "Floating Cubes `n(FFmpeg)"
-$ScriptDescription = "Displays media on six independently floating and rotating 3D cubes. Uses FFmpeg for broad video format support."
-$RequiredExecutables = @("ffmpeg.exe", "ffprobe.exe", "ffplay.exe")
-
-# --- Dependency Check ---
-$dependenciesMissing = $false
-$dependencyStatus = foreach ($exe in $RequiredExecutables) {
-    $isFound = (Get-Command $exe -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $PSScriptRoot $exe))
-    if (-not $isFound) { $dependenciesMissing = $true }
-    [pscustomobject]@{
-        Name   = $exe
-        Status = if ($isFound) { 'Found' } else { 'NOT FOUND' }
-    }
-}
-if ($dependenciesMissing) {
-    $messageLines = @(
-        "One or more required executables were not found in your system's PATH or the script's directory."
-        "Please install FFmpeg (including ffplay and ffprobe) and ensure they are accessible."
-        ""
-        "Required executable status:"
-    ) + ($dependencyStatus | ForEach-Object { " - $($_.Status): $($_.Name)" })
-    [System.Windows.Forms.MessageBox]::Show(($messageLines -join "`n"), "Dependency Error", "OK", "Error")
-    exit
-}
+$ExternalButtonName = "Floating Spheres `n(MediaElement)"
+$ScriptDescription = "Displays media on six independently floating and rotating 3D spheres. Uses the built-in Windows MediaElement."
+$RequiredExecutables = @() # No external executables needed
 
 # --- Main Application Loop ---
 while ($true) {
@@ -67,6 +45,8 @@ while ($true) {
         SelectedFiles = @()
         GlobalCounter = -1
         PlayerState = [hashtable]::Synchronized(@{})
+        AllMediaPlayers = [System.Collections.Generic.List[object]]::new()
+        MediaReadyCounter = 0 # Counter for initial media loads
         ImageExtensions = @(".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico")
         ImageHoldSeconds = 10
         AllAnimations = [hashtable]::Synchronized(@{})
@@ -86,7 +66,7 @@ while ($true) {
     # --- File Selection Form ---
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $SelectForm = New-Object System.Windows.Forms.Form
-    $SelectForm.Text = "Floating Cubes (FFmpeg) - Media Selector"
+    $SelectForm.Text = "Floating Spheres (MediaElement) - Media Selector"
     $SelectForm.Size = New-Object System.Drawing.Size(800, 680)
     $SelectForm.StartPosition = "CenterScreen"
 
@@ -239,15 +219,40 @@ while ($true) {
         }
     })
 
+    [xml]$VideoXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Preview Video - Click to Pause/Resume" Height="450" Width="800"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" SizeToContent="Manual"
+        WindowState="Normal" WindowStyle="ToolWindow" Background="Black">
+    <Grid x:Name="TheGrid">
+        <MediaElement x:Name="MediaPlayer" LoadedBehavior="Manual" UnloadedBehavior="Stop" />
+    </Grid>
+</Window>
+"@
+
     $DataGridView.Add_RowHeaderMouseClick({
         param($sender, $e)
-        if ($e.RowIndex -ge 0) {
-            $row = $DataGridView.Rows[$e.RowIndex]
-            $filePath = $row.Cells["FilePath"].Value
-            if ([System.IO.File]::Exists($filePath)) {
-                Start-Process -FilePath "ffplay.exe" -ArgumentList "-loglevel quiet -nostats -i `"$filePath`"" -NoNewWindow
-            } else { [System.Windows.Forms.MessageBox]::Show("File not found: $filePath", "Error", "OK", "Error") }
-        }
+        if ($e.RowIndex -lt 0) { return }
+        $row = $DataGridView.Rows[$e.RowIndex]
+        $filePath = $row.Cells["FilePath"].Value
+
+        $isPreviewPaused = $false
+        $VideoReader = (New-Object System.Xml.XmlNodeReader $VideoXaml)
+        $VideoWindow = [Windows.Markup.XamlReader]::Load($VideoReader)
+
+        $TheGrid = $VideoWindow.FindName("TheGrid")
+        $MediaPlayer = $VideoWindow.FindName("MediaPlayer")
+        $MediaPlayer.Source = [Uri]$filePath
+
+        $TheGrid.Add_MouseDown({
+            if($isPreviewPaused) { $MediaPlayer.Play(); $isPreviewPaused = $false }
+            else { $MediaPlayer.Pause(); $isPreviewPaused = $true }
+        })
+
+        $MediaPlayer.Add_MediaEnded({ $MediaPlayer.Position = [TimeSpan]::Zero; $MediaPlayer.Play() })
+        $MediaPlayer.Play()
+        $VideoWindow.ShowDialog() | Out-Null
     })
 
     $PlayButton.Add_Click({
@@ -310,7 +315,7 @@ while ($true) {
                     <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
                     <Run Text="Left Arrow        :  &#x2190;  : Slow Down Animation"/><LineBreak/>
                     <Run Text="Right Arrow       :  &#x2192;  : Speed Up Animation"/><LineBreak/><LineBreak/>
-                    <Run Text="*Click a cube to Pause/Resume*"/><LineBreak/>
+                    <Run Text="*Click a sphere to Pause/Resume*"/><LineBreak/>
                 </Paragraph>
             </FlowDocument>
         </RichTextBox>
@@ -378,11 +383,11 @@ while ($true) {
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Floating Cubes (FFmpeg)"
+        Title="Floating Spheres (MediaElement)"
         WindowStartupLocation="CenterScreen" 
         WindowStyle="None" AllowsTransparency="True" Background="Transparent">
     <Grid x:Name="MainGrid">
-        <Viewport3D x:Name="mainViewport">
+        <Viewport3D x:Name="mainViewport" Visibility="Collapsed">
             <Viewport3D.Camera>
                 <PerspectiveCamera Position="0,0,15" LookDirection="0,0,-1" UpDirection="0,1,0" FieldOfView="60"/>
             </Viewport3D.Camera>
@@ -422,74 +427,104 @@ while ($true) {
 
     # --- Helper Functions ---
 
-    function New-CubeVisual3D {
+    function New-SphereMesh {
         param(
-            [int]$CubeIndex,
-            [hashtable]$SyncHash
+            [double]$radius = 1.5,
+            [int]$slices = 64, # Longitude
+            [int]$stacks = 32  # Latitude
         )
 
-        $cubeVisual = New-Object System.Windows.Media.Media3D.ModelVisual3D
-        $cubeModelGroup = New-Object System.Windows.Media.Media3D.Model3DGroup
+        $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D
 
-        $faceNames = @("Front", "Back", "Right", "Left", "Top", "Bottom")
-        $positions = @(
-            "-1,-1,1  1,-1,1  1,1,1  -1,1,1",   # Front
-            "-1,-1,-1  -1,1,-1  1,1,-1  1,-1,-1",   # Back
-            "1,-1,1  1,-1,-1  1,1,-1  1,1,1",     # Right
-            "-1,-1,-1  -1,-1,1  -1,1,1  -1,1,-1",   # Left
-            "-1,1,1  1,1,1  1,1,-1  -1,1,-1",     # Top
-            "-1,-1,-1  1,-1,-1  1,-1,1  -1,-1,1"    # Bottom
-        )
-        $normals = @(
-            "0,0,1 0,0,1 0,0,1 0,0,1", "0,0,-1 0,0,-1 0,0,-1 0,0,-1", "1,0,0 1,0,0 1,0,0 1,0,0",
-            "-1,0,0 -1,0,0 -1,0,0 -1,0,0", "0,1,0 0,1,0 0,1,0 0,1,0", "0,-1,0 0,-1,0 0,-1,0 0,-1,0"
-        )
-        $textureCoords = @(
-            "0,1 1,1 1,0 0,0", "1,1 1,0 0,0 0,1", "0,1 1,1 1,0 0,0",
-            "0,1 1,1 1,0 0,0", "0,1 1,1 1,0 0,0", "0,1 1,1 1,0 0,0"
-        )
+        # Add vertices and texture coordinates
+        for ($stack = 0; $stack -le $stacks; $stack++) {
+            $phi = [Math]::PI / 2 - $stack * [Math]::PI / $stacks
+            $y = $radius * [Math]::Sin($phi)
+            $r = $radius * [Math]::Cos($phi)
 
-        $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
+            for ($slice = 0; $slice -le $slices; $slice++) {
+                $theta = $slice * 2 * [Math]::PI / $slices
+                $x = $r * [Math]::Cos($theta)
+                $z = $r * [Math]::Sin($theta)
 
-        for ($i = 0; $i -lt $faceNames.Length; $i++) {
-            $faceName = $faceNames[$i]
-            $facetIndex = ($CubeIndex * 6) + $i
-
-            $imageControl = New-Object System.Windows.Controls.Image -Property @{ Stretch = 'Fill' }
-            $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
-                HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'; TextWrapping = 'Wrap';
-                TextAlignment = 'Center'; IsHitTestVisible = $false; Margin = '10,0,10,0'
-            }
-            $grid = New-Object System.Windows.Controls.Grid -Property @{ Background = [System.Windows.Media.Brushes]::Black }
-            [void]$grid.Children.Add($imageControl)
-            [void]$grid.Children.Add($overlayTextBlock)
-
-            $visualBrush = New-Object System.Windows.Media.VisualBrush -Property @{ Visual = $grid }
-            $material = New-Object $materialType -Property @{ Brush = $visualBrush }
-            if ($SyncHash.UseTransparentEffect) { $material.Color = [System.Windows.Media.Colors]::White }
-
-            $mesh = New-Object System.Windows.Media.Media3D.MeshGeometry3D -Property @{
-                Positions = $positions[$i]; TriangleIndices = "0,1,2 0,2,3"; Normals = $normals[$i]; TextureCoordinates = $textureCoords[$i]
-            }
-            $geometryModel = New-Object System.Windows.Media.Media3D.GeometryModel3D -Property @{ Geometry = $mesh; Material = $material }
-            [void]$cubeModelGroup.Children.Add($geometryModel)
-
-            $SyncHash.PlayerState[$facetIndex] = @{
-                ImageControl  = $imageControl
-                Overlay       = $overlayTextBlock
-                IsImage       = $false
-                ImageTimer    = $null
-                IsFailed      = $false
-                RecoveryTimer = $null
-                FfmpegProcess = $null
-                FrameReader   = $null
-                WriteableBmp  = $null
-                CurrentPath   = $null
+                $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, $y, $z))
+                $mesh.TextureCoordinates.Add([System.Windows.Point]::new($slice / $slices, $stack / $stacks))
             }
         }
 
-        $cubeVisual.Content = $cubeModelGroup
-        return $cubeVisual
+        # Add triangle indices
+        for ($stack = 0; $stack -lt $stacks; $stack++) {
+            for ($slice = 0; $slice -lt $slices; $slice++) {
+                $i0 = $stack * ($slices + 1) + $slice
+                $i1 = ($stack + 1) * ($slices + 1) + $slice
+
+                $mesh.TriangleIndices.Add($i0); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i0 + 1)
+                $mesh.TriangleIndices.Add($i0 + 1); $mesh.TriangleIndices.Add($i1); $mesh.TriangleIndices.Add($i1 + 1)
+            }
+        }
+        return $mesh
+    }
+
+    function New-SphereVisual3D {
+        param(
+            [int]$SphereIndex,
+            [hashtable]$SyncHash
+        )
+
+        $sphereMesh = New-SphereMesh -radius 1.5 -slices 128 -stacks 64
+        $sphereViewport = New-Object System.Windows.Media.Media3D.Viewport2DVisual3D
+        $sphereViewport.Geometry = $sphereMesh
+
+        $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
+        $sphereMaterial = New-Object $materialType
+        [System.Windows.Media.Media3D.Viewport2DVisual3D]::SetIsVisualHostMaterial($sphereMaterial, $true)
+        $sphereViewport.Material = $sphereMaterial
+
+        $mediaElement = New-Object System.Windows.Controls.MediaElement -Property @{
+            LoadedBehavior = 'Manual'; UnloadedBehavior = 'Stop'; Stretch = 'Fill'; ScrubbingEnabled = $true
+        }
+        $overlayTextBlock = New-Object System.Windows.Controls.TextBlock -Property @{
+            HorizontalAlignment = 'Center'; VerticalAlignment = 'Center'; TextWrapping = 'Wrap';
+            TextAlignment = 'Center'; IsHitTestVisible = $false; Margin = '10,0,10,0'
+        }
+        $grid = New-Object System.Windows.Controls.Grid -Property @{ Background = [System.Windows.Media.Brushes]::Black }
+        [void]$grid.Children.Add($mediaElement)
+        [void]$grid.Children.Add($overlayTextBlock)
+
+        $sphereViewport.Visual = $grid
+
+        $playerState = @{
+            SphereIndex = $SphereIndex
+            Player = $mediaElement
+            Overlay = $overlayTextBlock
+            IsImage = $false
+            ImageTimer = $null
+            IsFailed = $false
+            RecoveryTimer = $null
+            InitialLoadComplete = $false # Flag for initial load
+        }
+        [void]$SyncHash.AllMediaPlayers.Add($mediaElement)
+        [void]($SyncHash.PlayerState[$mediaElement.GetHashCode()] = $playerState)
+
+        return $sphereViewport
+    }
+
+    function Check-LoadingComplete {
+        param([hashtable]$SyncHash)
+    
+        [System.Threading.Monitor]::Enter($SyncHash) # Lock for thread-safe increment and check
+        try {
+            $SyncHash.MediaReadyCounter++
+            if ($SyncHash.MediaReadyCounter -ge $SyncHash.AllMediaPlayers.Count) {
+                # All media loaded. Use dispatcher to update UI and signal loading form.
+                $SyncHash.Window.Dispatcher.Invoke([action]{
+                    $mainViewport = $SyncHash.Window.FindName("mainViewport")
+                    $mainViewport.Visibility = 'Visible'
+                    $SyncHash.WindowReady = $true # Signal loading form to close
+                })
+            }
+        }
+        finally { [System.Threading.Monitor]::Exit($SyncHash) }
     }
 
     $globalIndexLock = New-Object object
@@ -504,22 +539,23 @@ while ($true) {
         }
     }
 
-    function Assign-NextMediaToFace {
-        param([int]$FacetIndex, [hashtable]$SyncHash)
+    function Assign-NextMediaToPlayer {
+        param([System.Windows.Controls.MediaElement]$Player, [hashtable]$SyncHash)
 
-        $playerState = $SyncHash.PlayerState[$FacetIndex]
+        if (-not $Player) { return }
+        $playerState = $SyncHash.PlayerState[$Player.GetHashCode()]
         if (-not $playerState) { return }
 
-        # Stop any existing timers or processes for this face
-        if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
-        if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
-        if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited) { try { $playerState.FfmpegProcess.Kill() } catch {} }
+        if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop(); $playerState.ImageTimer = $null }
+        if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop(); $playerState.RecoveryTimer = $null }
 
         $nextIndex = Get-NextMediaIndex -SyncHash $SyncHash
         $filePath = $SyncHash.SelectedFiles[$nextIndex]
         $uri = [Uri]$filePath
 
-        # Apply overlay text
+        $Player.Stop()
+        $Player.Source = $uri
+
         $overlay = $playerState.Overlay
         switch ($SyncHash.RbSelection) {
             "Hidden"   { $overlay.Visibility = 'Collapsed' }
@@ -527,117 +563,94 @@ while ($true) {
             "Custom"   { $overlay.Text = $SyncHash.CustomText; $overlay.Visibility = 'Visible' }
         }
 
-        $playerState.CurrentPath = $uri.LocalPath
         $ext = [System.IO.Path]::GetExtension($uri.LocalPath).ToLower()
         $playerState.IsImage = ($SyncHash.ImageExtensions -contains $ext)
 
         if ($playerState.IsImage) {
-            $bitmap = New-Object System.Windows.Media.Imaging.BitmapImage
-            $bitmap.BeginInit(); $bitmap.UriSource = $uri; $bitmap.EndInit()
-            $playerState.ImageControl.Source = $bitmap
-
-            $timer = New-Object System.Windows.Threading.DispatcherTimer
-            $timer.Interval = [TimeSpan]::FromSeconds($SyncHash.ImageHoldSeconds)
-            $timer.Tag = $FacetIndex
-            $timer.Add_Tick({
-                $t = $args[0]; $fIndex = $t.Tag; $t.Stop()
-                Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
-            })
-            $playerState.ImageTimer = $timer
-            $timer.Start()
+            # MediaOpened will handle pausing and starting the timer
         } else {
-            # Video playback with FFmpeg
-            try {
-                $psi_probe = New-Object System.Diagnostics.ProcessStartInfo -Property @{
-                    FileName = "ffprobe.exe"; Arguments = "-v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 `"$($uri.LocalPath)`"";
-                    RedirectStandardOutput = $true; UseShellExecute = $false; CreateNoWindow = $true
-                }
-                $probe_proc = [System.Diagnostics.Process]::Start($psi_probe)
-                $ffprobeOutput = $probe_proc.StandardOutput.ReadToEnd()
-                $probe_proc.WaitForExit()
-
-                $width, $height = $ffprobeOutput -split 'x'
-                if (($probe_proc.ExitCode -ne 0) -or -not ($width -and $height -and [int]$width -gt 0 -and [int]$height -gt 0)) { throw "Invalid dimensions or corrupt file." }
-
-                $playerState.WriteableBmp = New-Object System.Windows.Media.Imaging.WriteableBitmap([int]$width, [int]$height, 96, 96, [System.Windows.Media.PixelFormats]::Bgr24, $null)
-                $playerState.ImageControl.Source = $playerState.WriteableBmp
-
-                $loopArg = if ($SyncHash.SelectedFiles.Count -le 36) { "-stream_loop -1" } else { "" }
-
-                $psi = New-Object System.Diagnostics.ProcessStartInfo -Property @{
-                    FileName = "ffmpeg"; Arguments = "-hide_banner -loglevel error $loopArg -i `"$($uri.LocalPath)`" -vf scale=${width}:${height} -f rawvideo -pix_fmt bgr24 -";
-                    RedirectStandardOutput = $true; RedirectStandardError = $true; UseShellExecute = $false; CreateNoWindow = $true
-                }
-                $ffmpeg = [System.Diagnostics.Process]::Start($psi)
-
-                $playerState.FfmpegProcess = $ffmpeg
-                $stream = $ffmpeg.StandardOutput.BaseStream
-                $bytesPerFrame = [int]$width * [int]$height * 3
-                $buffer = New-Object byte[] $bytesPerFrame
-                $rect = [System.Windows.Int32Rect]::new(0, 0, [int]$width, [int]$height)
-                $stride = [int]$width * 3
-
-                $frameTimer = New-Object System.Windows.Threading.DispatcherTimer
-                $frameTimer.Interval = [TimeSpan]::FromMilliseconds(33) # ~30fps
-                $frameTimer.Tag = $FacetIndex
-
-                $tickScriptBlock = {
-                    $timer = $args[0]; $fIndex = $timer.Tag
-                    $pState = $SyncHash.PlayerState[$fIndex]
-                    $totalRead = 0
-                    while ($totalRead -lt $bytesPerFrame) {
-                        $bytesRead = $stream.Read($buffer, $totalRead, $bytesPerFrame - $totalRead)
-                        if ($bytesRead -le 0) { # End of stream or error
-                            $timer.Stop()
-                            Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
-                            return
-                        }
-                        $totalRead += $bytesRead
-                    }
-                    if ($totalRead -eq $bytesPerFrame) {
-                        $pState.WriteableBmp.Lock()
-                        $pState.WriteableBmp.WritePixels($rect, $buffer, $stride, 0)
-                        $pState.WriteableBmp.Unlock()
-                    }
-                }
-                $frameTimer.Add_Tick($tickScriptBlock.GetNewClosure())
-                $playerState.ImageTimer = $frameTimer # Reuse ImageTimer property for cleanup
-                $frameTimer.Start()
-            } catch {
-                Handle-MediaFailure -FacetIndex $FacetIndex -Reason $_.Exception.Message -SyncHash $SyncHash
-            }
+            $Player.Play()
         }
     }
 
     function Handle-MediaFailure {
-        param([int]$FacetIndex, [string]$Reason, [hashtable]$SyncHash)
+        param([System.Windows.Controls.MediaElement]$FailedPlayer, [string]$Reason, [hashtable]$SyncHash)
 
-        $playerState = $SyncHash.PlayerState[$FacetIndex]
+        if (-not $FailedPlayer) { return }
+        $playerState = $SyncHash.PlayerState[$FailedPlayer.GetHashCode()]
         if (-not $playerState -or $playerState.IsFailed) { return }
 
         $playerState.IsFailed = $true
-        $fileName = if ($playerState.CurrentPath) { [System.IO.Path]::GetFileName($playerState.CurrentPath) } else { "media" }
+        $fileName = if ($FailedPlayer.Source) { [System.IO.Path]::GetFileName($FailedPlayer.Source.LocalPath) } else { "media" }
         $playerState.Overlay.Text = "ERROR`n$fileName`n$Reason"
         $playerState.Overlay.Visibility = 'Visible'
-        $playerState.ImageControl.Source = $null # Clear the image
+        $playerState.Overlay.Foreground = [System.Windows.Media.Brushes]::Red
+        $FailedPlayer.Visibility = 'Collapsed'
+
+        if (-not $playerState.InitialLoadComplete) {
+            $playerState.InitialLoadComplete = $true
+            Check-LoadingComplete -SyncHash $SyncHash
+        }
 
         if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
         $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer
         $recoveryTimer.Interval = [TimeSpan]::FromSeconds(5)
-        $recoveryTimer.Tag = $FacetIndex
+        $recoveryTimer.Tag = $FailedPlayer
         $recoveryTimer.Add_Tick({
-            $timer = $args[0]; $fIndex = $timer.Tag; $timer.Stop()
-            $state = $SyncHash.PlayerState[$fIndex]
+            $timer = $args[0]; $playerToRecover = $timer.Tag; $timer.Stop()
+            $state = $SyncHash.PlayerState[$playerToRecover.GetHashCode()]
             $state.IsFailed = $false
-            Assign-NextMediaToFace -FacetIndex $fIndex -SyncHash $SyncHash
+            $playerToRecover.Visibility = 'Visible'
+            Assign-NextMediaToPlayer -Player $playerToRecover -SyncHash $SyncHash
         })
         $playerState.RecoveryTimer = $recoveryTimer
         $recoveryTimer.Start()
     }
 
-    # --- Create and Animate 6 Cubes ---
+    $MediaEndedHandler = {
+        param($Sender, $EventArgs)
+        $finishedPlayer = $Sender
+        if (-not $finishedPlayer) { return }
+        $playerState = $SyncHash.PlayerState[$finishedPlayer.GetHashCode()]
+        if ($playerState -and $playerState.IsFailed) { return }
+        Assign-NextMediaToPlayer -Player $finishedPlayer -SyncHash $SyncHash
+    }
+
+    $MediaOpenedHandler = {
+        param($Sender, $EventArgs)
+        $player = $Sender
+        if (-not $player) { return }
+        $playerState = $SyncHash.PlayerState[$player.GetHashCode()]
+        if (-not $playerState) { return }
+
+        $playerState.IsFailed = $false
+        $player.Visibility = 'Visible'
+
+        if (-not $playerState.InitialLoadComplete) {
+            $playerState.InitialLoadComplete = $true
+            Check-LoadingComplete -SyncHash $SyncHash
+        }
+
+        if ($playerState.IsImage) {
+            $player.Pause()
+            if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
+            $timer = New-Object System.Windows.Threading.DispatcherTimer
+            $timer.Interval = [TimeSpan]::FromSeconds($SyncHash.ImageHoldSeconds)
+            $timer.Tag = $player
+            $timer.Add_Tick({
+                $tickTimer = $args[0]; $tickPlayer = $tickTimer.Tag; $tickTimer.Stop()
+                & $MediaEndedHandler -Sender $tickPlayer -EventArgs $null
+            })
+            $playerState.ImageTimer = $timer
+            $timer.Start()
+        } elseif (-not $player.NaturalDuration.HasTimeSpan) {
+            Handle-MediaFailure -FailedPlayer $player -Reason "Invalid duration or codec." -SyncHash $SyncHash
+        }
+    }
+
+    # --- Create and Animate 6 Spheres ---
     for ($i = 0; $i -lt 6; $i++) {
-        $cubeVisual = New-CubeVisual3D -CubeIndex $i -SyncHash $SyncHash
+        $sphereVisual = New-SphereVisual3D -SphereIndex $i -SyncHash $SyncHash
 
         $transformGroup = New-Object System.Windows.Media.Media3D.Transform3DGroup
         $rotateTransform = New-Object System.Windows.Media.Media3D.RotateTransform3D
@@ -648,7 +661,7 @@ while ($true) {
 
         $translateTransform = New-Object System.Windows.Media.Media3D.TranslateTransform3D
         $transformGroup.Children.Add($translateTransform)
-        $cubeVisual.Transform = $transformGroup
+        $sphereVisual.Transform = $transformGroup
 
         $rotAnim = New-Object System.Windows.Media.Animation.DoubleAnimation -Property @{
             From = 0; To = 360; Duration = [TimeSpan]::FromSeconds((Get-Random -Minimum 15 -Maximum 45))
@@ -686,15 +699,21 @@ while ($true) {
         $translateTransform.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetYProperty, $posAnimY)
         $translateTransform.BeginAnimation([System.Windows.Media.Media3D.TranslateTransform3D]::OffsetZProperty, $posAnimZ)
         
-        $SyncHash.AllAnimations[$cubeVisual.GetHashCode()] = [pscustomobject]@{
+        $SyncHash.AllAnimations[$sphereVisual.GetHashCode()] = [pscustomobject]@{
             RotationAnimation = $rotAnim; PositionAnimationX = $posAnimX; PositionAnimationY = $posAnimY; PositionAnimationZ = $posAnimZ
         }
-        [void]$mainViewport.Children.Add($cubeVisual)
+        [void]$mainViewport.Children.Add($sphereVisual)
     }
 
     # --- Initial Media Loading ---
-    for ($i = 0; $i -lt ($SyncHash.PlayerState.Keys.Count); $i++) {
-        Assign-NextMediaToFace -FacetIndex $i -SyncHash $SyncHash
+    foreach ($player in $SyncHash.AllMediaPlayers) {
+        $player.Add_MediaEnded($MediaEndedHandler)
+        $player.Add_MediaOpened($MediaOpenedHandler)
+        $player.Add_MediaFailed({
+            param($s, $e)
+            Handle-MediaFailure -FailedPlayer $s -Reason $e.ErrorException.Message -SyncHash $SyncHash
+        })
+        Assign-NextMediaToPlayer -Player $player -SyncHash $SyncHash
     }
 
     # --- Apply Text Overlay Settings on Load ---
@@ -731,7 +750,7 @@ while ($true) {
         if ($SyncHash.Paused) {
             # --- RESUME ---
             foreach ($visual in $mainViewport.Children) {
-                if (-not ($visual -is [System.Windows.Media.Media3D.ModelVisual3D] -and $visual.Transform)) { continue }
+                if (-not ($visual -is [System.Windows.Media.Media3D.Viewport2DVisual3D] -and $visual.Transform)) { continue }
                 $animSet = $SyncHash.AllAnimations[$visual.GetHashCode()]; if (-not $animSet) { continue }
                 $rotation = $visual.Transform.Children[0].Rotation
                 $translation = $visual.Transform.Children[1]
@@ -746,7 +765,7 @@ while ($true) {
         } else {
             # --- PAUSE ---
             foreach ($visual in $mainViewport.Children) {
-                if (-not ($visual -is [System.Windows.Media.Media3D.ModelVisual3D] -and $visual.Transform -and $visual.Transform.Children)) { continue }
+                if (-not ($visual -is [System.Windows.Media.Media3D.Viewport2DVisual3D] -and $visual.Transform -and $visual.Transform.Children)) { continue }
                 $rotation = $visual.Transform.Children[0].Rotation
                 $translation = $visual.Transform.Children[1]
                 $currentAngle = $rotation.Angle; $rotation.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null); $rotation.Angle = $currentAngle
@@ -800,7 +819,28 @@ while ($true) {
     })
 
     $mainGrid = $window.FindName("MainGrid")
-    $mainGrid.Add_MouseDown({ & $pauseOrResumeAnimations })
+    $mainGrid.Add_MouseDown({
+        param($sender, $e)
+        $viewport = $window.FindName('mainViewport')
+        $mousePosition = $e.GetPosition($viewport)
+        $hitVisual = $null
+
+        $hitTestCallback = [System.Windows.Media.HitTestResultCallback]{
+            param($result)
+            if ($result -is [System.Windows.Media.Media3D.RayMeshGeometry3DHitTestResult]) {
+                $script:hitVisual = $result.VisualHit
+                return [System.Windows.Media.HitTestResultBehavior]::Stop
+            }
+            return [System.Windows.Media.HitTestResultBehavior]::Continue
+        }
+
+        $hitTestParams = [System.Windows.Media.PointHitTestParameters]::new($mousePosition)
+        [System.Windows.Media.VisualTreeHelper]::HitTest($viewport, $null, $hitTestCallback, $hitTestParams)
+
+        if ($hitVisual -is [System.Windows.Media.Media3D.Viewport2DVisual3D]) {
+            & $pauseOrResumeAnimations
+        }
+    })
 
     $window.Add_Closed({
         foreach ($animSet in $SyncHash.AllAnimations.Values) {
@@ -812,14 +852,9 @@ while ($true) {
         foreach ($playerState in $SyncHash.PlayerState.Values) {
             if ($playerState.ImageTimer) { $playerState.ImageTimer.Stop() }
             if ($playerState.RecoveryTimer) { $playerState.RecoveryTimer.Stop() }
-            if ($playerState.FfmpegProcess -and -not $playerState.FfmpegProcess.HasExited) { try { $playerState.FfmpegProcess.Kill() } catch {} }
+            $player = $playerState.Player
+            $player.Stop(); $player.Source = $null; $player.Close()
         }
-    })
-
-    $window.Add_ContentRendered({
-        # This event fires after the window is rendered. It's the perfect time
-        # to signal that the main window is ready and the loading form can close.
-        $SyncHash.WindowReady = $true
     })
 
     # --- Show the Window ---

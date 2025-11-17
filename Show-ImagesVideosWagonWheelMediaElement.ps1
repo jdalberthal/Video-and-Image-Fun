@@ -30,6 +30,8 @@
 Clear-Host
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms, System.Drawing
 
+$SyncHash = [hashtable]::Synchronized(@{})
+
 # --- Script Metadata ---
 $ExternalButtonName = "Wagon Wheel (MediaElement)"
 $ScriptDescription = "Displays media on the outer curved faces of rotating 3D wagon wheel slices. Each slice plays media independently. Uses the built-in Windows MediaElement."
@@ -37,13 +39,14 @@ $ScriptDescription = "Displays media on the outer curved faces of rotating 3D wa
 # --- Dependency Check ---
 $RequiredExecutables = @() # No external executables needed
 
-# --- Pie Slice Generation Function ---
-function New-PieSliceModel {
+# --- Wagon Wheel Surface Generation Function ---
+function New-WagonWheelSurfaceModel
+{
     param(
         [double]$radius = 1.5,
         [double]$height = 0.5,
         [double]$startAngleDeg = 0,
-        [double]$sliceAngleDeg = 45,
+        [double]$SurfaceAngleDeg = 45,
         [int]$segments = 8 # Segments for the curved outer face
     )
 
@@ -52,33 +55,36 @@ function New-PieSliceModel {
 
     # --- Vertices ---
     # 0,1: Center bottom, top
-    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, -$h2, 0))
+    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, - $h2, 0))
     $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new(0, $h2, 0))
 
     # 2,3: Start angle edge (bottom, top)
     $startAngleRad = $startAngleDeg * [Math]::PI / 180.0
     $x0 = $radius * [Math]::Cos($startAngleRad)
     $z0 = $radius * [Math]::Sin($startAngleRad)
-    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x0, -$h2, $z0))
+    $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x0, - $h2, $z0))
     $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x0, $h2, $z0))
 
     # Add vertices for the curved outer face
     $outerFaceStartIdx = $mesh.Positions.Count
-    for ($i = 0; $i -le $segments; $i++) {
-        $currentAngleRad = ($startAngleDeg + ($sliceAngleDeg * $i / $segments)) * [Math]::PI / 180.0
+    for ($i = 0; $i -le $segments; $i++)
+    {
+        $currentAngleRad = ($startAngleDeg + ($SurfaceAngleDeg * $i / $segments)) * [Math]::PI / 180.0
         $x = $radius * [Math]::Cos($currentAngleRad)
         $z = $radius * [Math]::Sin($currentAngleRad)
-        $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, -$h2, $z)) # Bottom vertex
+        $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, - $h2, $z)) # Bottom vertex
         $mesh.Positions.Add([System.Windows.Media.Media3D.Point3D]::new($x, $h2, $z))  # Top vertex
     }
 
     # --- Texture Coordinates ---
     # Add dummy UVs for non-textured faces
-    for ($i = 0; $i -lt $outerFaceStartIdx; $i++) {
+    for ($i = 0; $i -lt $outerFaceStartIdx; $i++)
+    {
         $mesh.TextureCoordinates.Add([System.Windows.Point]::new(0, 0))
     }
     # Add UVs for the curved outer face
-    for ($i = 0; $i -le $segments; $i++) {
+    for ($i = 0; $i -le $segments; $i++)
+    {
         # Invert the U-coordinate to flip the texture horizontally. This corrects the mirrored text.
         $u = 1 - ($i / $segments)
         $mesh.TextureCoordinates.Add([System.Windows.Point]::new($u, 1)) # Bottom UV
@@ -99,7 +105,8 @@ function New-PieSliceModel {
     $mesh.TriangleIndices.Add(0); $mesh.TriangleIndices.Add($endIdx + 1); $mesh.TriangleIndices.Add($endIdx)
 
     # Curved outer face
-    for ($i = 0; $i -lt $segments; $i++) {
+    for ($i = 0; $i -lt $segments; $i++)
+    {
         $idx0 = $outerFaceStartIdx + ($i * 2)       # Current bottom
         $idx1 = $outerFaceStartIdx + ($i * 2) + 1   # Current top
         $idx2 = $outerFaceStartIdx + ($i * 2) + 2   # Next bottom
@@ -110,8 +117,8 @@ function New-PieSliceModel {
     }
 
     # --- Create Models ---
-    $sliceModel = New-Object System.Windows.Media.Media3D.GeometryModel3D
-    $sliceModel.Geometry = $mesh
+    $SurfaceModel = New-Object System.Windows.Media.Media3D.GeometryModel3D
+    $SurfaceModel.Geometry = $mesh
 
     # The main material will be for the outer face.
     # We need a separate material for the other faces.
@@ -122,7 +129,8 @@ function New-PieSliceModel {
     $otherFacesMesh.Positions = $mesh.Positions
     $otherFacesMesh.TextureCoordinates = $mesh.TextureCoordinates
     # Add only the indices for top, bottom, and side faces
-    for ($i = 0; $i -lt 24; $i++) {
+    for ($i = 0; $i -lt 24; $i++)
+    {
         $otherFacesMesh.TriangleIndices.Add($mesh.TriangleIndices[$i])
     }
     $otherFacesModel = New-Object System.Windows.Media.Media3D.GeometryModel3D($otherFacesMesh, $otherFacesMaterial)
@@ -132,7 +140,8 @@ function New-PieSliceModel {
     $outerFaceMesh.Positions = $mesh.Positions
     $outerFaceMesh.TextureCoordinates = $mesh.TextureCoordinates
     # Add only the indices for the outer face
-    for ($i = 24; $i -lt $mesh.TriangleIndices.Count; $i++) {
+    for ($i = 24; $i -lt $mesh.TriangleIndices.Count; $i++)
+    {
         $outerFaceMesh.TriangleIndices.Add($mesh.TriangleIndices[$i])
     }
     $outerFaceModel = New-Object System.Windows.Media.Media3D.GeometryModel3D($outerFaceMesh, $null) # Material will be set later
@@ -149,12 +158,13 @@ function New-PieSliceModel {
 }
 
 # --- Main Application Loop ---
-while ($true) {
+while ($true)
+{
 
     # -------------------- File Selection Form --------------------
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $SelectForm = New-Object System.Windows.Forms.Form
-    $SelectForm.Text = "Pie Slice Media Selector"
+    $SelectForm.Text = "Wagon Wheel Media Selector"
     $SelectForm.Size = New-Object System.Drawing.Size(800, 680)
     $SelectForm.StartPosition = "CenterScreen"
 
@@ -190,13 +200,14 @@ while ($true) {
     $SelectForm.Controls.Add($PlayButton)
 
     $DataGridView.Add_RowHeaderMouseClick({
-        param($sender, $e)
-        if ($e.RowIndex -ge 0) {
-            $isPreviewPaused = $false
-            $row = $DataGridView.Rows[$e.RowIndex]
-            $videoPath = $row.Cells["FilePath"].Value
+            param($sender, $e)
+            if ($e.RowIndex -ge 0)
+            {
+                $isPreviewPaused = $false
+                $row = $DataGridView.Rows[$e.RowIndex]
+                $videoPath = $row.Cells["FilePath"].Value
 
-            [xml]$previewXaml = @"
+                [xml]$previewXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Preview - Click to Pause/Resume" Height="450" Width="800"
@@ -206,34 +217,35 @@ while ($true) {
     </Grid>
 </Window>
 "@
-            $previewReader = (New-Object System.Xml.XmlNodeReader $previewXaml)
-            $previewWindow = [Windows.Markup.XamlReader]::Load($previewReader)
-            $previewGrid = $previewWindow.FindName("TheGrid")
-            $previewPlayer = $previewWindow.FindName("MediaPlayer")
-            $previewPlayer.Source = [Uri]$videoPath
-            $previewGrid.Add_MouseDown({
-                if ($isPreviewPaused) { $previewPlayer.Play(); $isPreviewPaused = $false } else { $previewPlayer.Pause(); $isPreviewPaused = $true }
-            })
-            $previewPlayer.Add_MediaEnded({ $previewPlayer.Position = [TimeSpan]::Zero; $previewPlayer.Play() })
-            $previewPlayer.Play(); $previewWindow.ShowDialog() | Out-Null
-        }
-    })
+                $previewReader = (New-Object System.Xml.XmlNodeReader $previewXaml)
+                $previewWindow = [Windows.Markup.XamlReader]::Load($previewReader)
+                $previewGrid = $previewWindow.FindName("TheGrid")
+                $previewPlayer = $previewWindow.FindName("MediaPlayer")
+                $previewPlayer.Source = [Uri]$videoPath
+                $previewGrid.Add_MouseDown({
+                        if ($isPreviewPaused) { $previewPlayer.Play(); $isPreviewPaused = $false } else { $previewPlayer.Pause(); $isPreviewPaused = $true }
+                    })
+                $previewPlayer.Add_MediaEnded({ $previewPlayer.Position = [TimeSpan]::Zero; $previewPlayer.Play() })
+                $previewPlayer.Play(); $previewWindow.ShowDialog() | Out-Null
+            }
+        })
 
     $DataGridView.Add_CellPainting({
-        param($sender, $e)
-        if ($e.RowIndex -ge 0 -and $e.ColumnIndex -lt 0) {
-            $e.PaintBackground($e.ClipBounds, $true)
-            $fmt = New-Object System.Drawing.StringFormat
-            $fmt.Alignment = [System.Drawing.StringAlignment]::Center
-            $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
-            $rectF = New-Object System.Drawing.RectangleF($e.CellBounds.X, $e.CellBounds.Y, $e.CellBounds.Width, $e.CellBounds.Height)
-            $e.Graphics.DrawString($e.FormattedValue.ToString(), $e.CellStyle.Font, [System.Drawing.Brushes]::Black, $rectF, $fmt)
-            $e.Handled = $true
-        }
-    })
+            param($sender, $e)
+            if ($e.RowIndex -ge 0 -and $e.ColumnIndex -lt 0)
+            {
+                $e.PaintBackground($e.ClipBounds, $true)
+                $fmt = New-Object System.Drawing.StringFormat
+                $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+                $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+                $rectF = New-Object System.Drawing.RectangleF($e.CellBounds.X, $e.CellBounds.Y, $e.CellBounds.Width, $e.CellBounds.Height)
+                $e.Graphics.DrawString($e.FormattedValue.ToString(), $e.CellStyle.Font, [System.Drawing.Brushes]::Black, $rectF, $fmt)
+                $e.Handled = $true
+            }
+        })
 
     # --- Text Overlay Controls ---
-    $GroupBox     = New-Object System.Windows.Forms.GroupBox -Property @{ Text = "Text Overlay"; Location = '10, 440'; Size = '125, 130' }
+    $GroupBox = New-Object System.Windows.Forms.GroupBox -Property @{ Text = "Text Overlay"; Location = '10, 440'; Size = '125, 130' }
     $RadioButton1 = New-Object System.Windows.Forms.RadioButton -Property @{ Text = "Hide Text Overlay"; Location = '10, 30'; Width = 114; Checked = $true }
     $RadioButton2 = New-Object System.Windows.Forms.RadioButton -Property @{ Text = "Filename"; Location = '10, 60' }
     $RadioButton3 = New-Object System.Windows.Forms.RadioButton -Property @{ Text = "Custom Text"; Location = '10, 90' }
@@ -245,47 +257,47 @@ while ($true) {
     }
     $SelectForm.Controls.Add($TextBox)
 
-    $CurrentColor      = New-Object System.Windows.Forms.Label    -Property @{ Text = "Text Color:"; Location = '600, 477'; AutoSize = $true; Visible = $false }
-    $ColorExample      = New-Object System.Windows.Forms.Label    -Property @{ Text = "     "; Location = '660, 477'; AutoSize = $true; BackColor = [System.Drawing.Color]::Black; Visible = $false }
+    $CurrentColor = New-Object System.Windows.Forms.Label    -Property @{ Text = "Text Color:"; Location = '600, 477'; AutoSize = $true; Visible = $false }
+    $ColorExample = New-Object System.Windows.Forms.Label    -Property @{ Text = "     "; Location = '660, 477'; AutoSize = $true; BackColor = [System.Drawing.Color]::Black; Visible = $false }
     $SelectColorButton = New-Object System.Windows.Forms.Button   -Property @{ Text = "Change"; Location = '685, 470'; Size = '80, 30'; Visible = $false }
-    $SizeLabel         = New-Object System.Windows.Forms.Label    -Property @{ Text = "Font Size:"; AutoSize = $true; Location = '600, 522'; Visible = $false }
-    $NumericUpDown     = New-Object System.Windows.Forms.NumericUpDown -Property @{ Location = '660, 520'; Size = '50, 20'; Visible = $false; Minimum = 8; Maximum = 72; Value = 24 }
-    $FontButton        = New-Object System.Windows.Forms.Button   -Property @{ Text = "Change Font"; Location = '600, 570'; Size = '170, 25'; Visible = $false }
-    $ItalicCheckbox    = New-Object System.Windows.Forms.CheckBox -Property @{ Text = "Italic"; Location = '600, 620'; Size = '75, 20'; Checked = $false; Visible = $false }
-    $BoldCheckbox      = New-Object System.Windows.Forms.CheckBox -Property @{ Text = "Bold"; Location = '680, 620'; Size = '75, 20'; Checked = $true;  Visible = $false }
+    $SizeLabel = New-Object System.Windows.Forms.Label    -Property @{ Text = "Font Size:"; AutoSize = $true; Location = '600, 522'; Visible = $false }
+    $NumericUpDown = New-Object System.Windows.Forms.NumericUpDown -Property @{ Location = '660, 520'; Size = '50, 20'; Visible = $false; Minimum = 8; Maximum = 72; Value = 24 }
+    $FontButton = New-Object System.Windows.Forms.Button   -Property @{ Text = "Change Font"; Location = '600, 570'; Size = '170, 25'; Visible = $false }
+    $ItalicCheckbox = New-Object System.Windows.Forms.CheckBox -Property @{ Text = "Italic"; Location = '600, 620'; Size = '75, 20'; Checked = $false; Visible = $false }
+    $BoldCheckbox = New-Object System.Windows.Forms.CheckBox -Property @{ Text = "Bold"; Location = '680, 620'; Size = '75, 20'; Checked = $true; Visible = $false }
 
     $SelectForm.Controls.AddRange(@(
-        $CurrentColor, $ColorExample, $SelectColorButton, $SizeLabel,
-        $NumericUpDown, $FontButton, $ItalicCheckbox, $BoldCheckbox
-    ))
+            $CurrentColor, $ColorExample, $SelectColorButton, $SizeLabel,
+            $NumericUpDown, $FontButton, $ItalicCheckbox, $BoldCheckbox
+        ))
 
     # --- Script-scoped form state with safe defaults ---
     $script:formState = @{
-      TextColor            = [System.Drawing.Color]::Black
-      FontFamily           = "Arial"
-      FontSize             = 24
-      IsBold               = $true
-      IsItalic             = $false
-      RbSelection          = "Hidden"
-      CustomText           = ""
-      UseTransparentEffect = $false
-      SelectedFiles        = @()
+        TextColor            = [System.Drawing.Color]::Black
+        FontFamily           = "Arial"
+        FontSize             = 24
+        IsBold               = $true
+        IsItalic             = $false
+        RbSelection          = "Hidden"
+        CustomText           = ""
+        UseTransparentEffect = $false
+        SelectedFiles        = @()
     }
 
     # Toggle visibility of text controls
     $textOverlayEvent = {
         $isTextVisible = $RadioButton2.Checked -or $RadioButton3.Checked
-        $isCustomText  = $RadioButton3.Checked
+        $isCustomText = $RadioButton3.Checked
 
-        $TextBox.Visible           = $isCustomText
-        $CurrentColor.Visible      = $isTextVisible
-        $ColorExample.Visible      = $isTextVisible
+        $TextBox.Visible = $isCustomText
+        $CurrentColor.Visible = $isTextVisible
+        $ColorExample.Visible = $isTextVisible
         $SelectColorButton.Visible = $isTextVisible
-        $SizeLabel.Visible         = $isTextVisible
-        $NumericUpDown.Visible     = $isTextVisible
-        $FontButton.Visible        = $isTextVisible
-        $ItalicCheckbox.Visible    = $isTextVisible
-        $BoldCheckbox.Visible      = $isTextVisible
+        $SizeLabel.Visible = $isTextVisible
+        $NumericUpDown.Visible = $isTextVisible
+        $FontButton.Visible = $isTextVisible
+        $ItalicCheckbox.Visible = $isTextVisible
+        $BoldCheckbox.Visible = $isTextVisible
     }
     $RadioButton1.Add_Click($textOverlayEvent)
     $RadioButton2.Add_Click($textOverlayEvent)
@@ -324,10 +336,13 @@ while ($true) {
         $style = [System.Drawing.FontStyle]::Regular
         if ($BoldCheckbox.Checked) { $style = $style -bor [System.Drawing.FontStyle]::Bold }
         if ($ItalicCheckbox.Checked) { $style = $style -bor [System.Drawing.FontStyle]::Italic }
-        try {
+        try
+        {
             $newFont = New-Object System.Drawing.Font($script:formState.FontFamily, [float]$NumericUpDown.Value, $style)
             $TextBox.Font = $newFont
-        } catch {
+        }
+        catch
+        {
             $TextBox.Font = New-Object System.Drawing.Font("Arial", 12, $style)
         }
     }
@@ -336,63 +351,135 @@ while ($true) {
     $BoldCheckbox.Add_CheckedChanged($updateTextBoxFont)
 
     $SelectAllCheckbox.Add_CheckedChanged({
-        $isChecked = $SelectAllCheckbox.Checked
-        foreach ($row in $DataGridView.Rows) { $row.Cells["Select"].Value = $isChecked }
-        $DataGridView.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
-    })
+            $isChecked = $SelectAllCheckbox.Checked
+            foreach ($row in $DataGridView.Rows) { $row.Cells["Select"].Value = $isChecked }
+            $DataGridView.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
+        })
 
     $BrowseButton.Add_Click({
-        $FolderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-        $FolderBrowser.Description = "Select the folder to scan."
-        if ($FolderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            $SelectedPath = $FolderBrowser.SelectedPath
-            $FolderPathTextBox.Text = $SelectedPath
-            $DataGridView.Rows.Clear()
+            $FolderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+            $FolderBrowser.Description = "Select the folder to scan."
+            if ($FolderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+            {
+                $SelectedPath = $FolderBrowser.SelectedPath
+                $FolderPathTextBox.Text = $SelectedPath
+                $DataGridView.Rows.Clear()
 
-            $ImageExtensionsScan = "*.bmp","*.jpeg","*.jpg","*.png","*.tif","*.tiff","*.gif","*.wmp","*.ico"
-            $VideoExtensionsScan = "*.webm","*.mkv","*.flv","*.vob","*.ogv","*.ogg","*.mov","*.avi","*.qt","*.wmv","*.yuv","*.rm","*.asf","*.amv","*.mp4","*.m4p","*.m4v","*.mpg","*.mp2","*.mpeg","*.mpe","*.mpv","*.svi","*.3gp","*.3g2","*.mxf","*.roq","*.nsv","*.f4v","*.f4p","*.f4a","*.f4b"
-            $AllowedExtensions = $ImageExtensionsScan + $VideoExtensionsScan
+                $ImageExtensionsScan = "*.bmp", "*.jpeg", "*.jpg", "*.png", "*.tif", "*.tiff", "*.gif", "*.wmp", "*.ico"
+                $VideoExtensionsScan = "*.webm", "*.mkv", "*.flv", "*.vob", "*.ogv", "*.ogg", "*.mov", "*.avi", "*.qt", "*.wmv", "*.yuv", "*.rm", "*.asf", "*.amv", "*.mp4", "*.m4p", "*.m4v", "*.mpg", "*.mp2", "*.mpeg", "*.mpe", "*.mpv", "*.svi", "*.3gp", "*.3g2", "*.mxf", "*.roq", "*.nsv", "*.f4v", "*.f4p", "*.f4a", "*.f4b"
+                $AllowedExtensions = $ImageExtensionsScan + $VideoExtensionsScan
 
-            $gciParams = @{ File = $true; Include = $AllowedExtensions }
-            if ($RecursiveCheckBox.Checked) { $gciParams.Path = $SelectedPath; $gciParams.Recurse = $true }
-            else { $gciParams.Path = Join-Path $SelectedPath "*" }
-            $files = Get-ChildItem @gciParams
-            foreach ($file in $files) { [void]$DataGridView.Rows.Add($false, $file.Name, $file.FullName) }
-            foreach ($row in $DataGridView.Rows) { if (-not $row.IsNewRow) { $row.HeaderCell.Value = "Play" } }
-        }
-    })
+                $gciParams = @{ File = $true; Include = $AllowedExtensions }
+                if ($RecursiveCheckBox.Checked) { $gciParams.Path = $SelectedPath; $gciParams.Recurse = $true }
+                else { $gciParams.Path = Join-Path $SelectedPath "*" }
+                $files = Get-ChildItem @gciParams
+                foreach ($file in $files) { [void]$DataGridView.Rows.Add($false, $file.Name, $file.FullName) }
+                foreach ($row in $DataGridView.Rows) { if (-not $row.IsNewRow) { $row.HeaderCell.Value = "Play" } }
+            }
+        })
 
     $PlayButton.Add_Click({
-        $script:formState.SelectedFiles = @(
-            foreach ($Row in $DataGridView.Rows) {
-                if ($Row.Cells["Select"].Value) { $Row.Cells["FilePath"].Value }
+            $script:formState.SelectedFiles = @(
+                foreach ($Row in $DataGridView.Rows)
+                {
+                    if ($Row.Cells["Select"].Value) { $Row.Cells["FilePath"].Value }
+                }
+            )
+
+            if ($script:formState.SelectedFiles.Count -gt 0)
+            {
+                $script:formState.UseTransparentEffect = $TransparentCheckbox.Checked
+                if ($RadioButton1.Checked) { $script:formState.RbSelection = "Hidden" }
+                if ($RadioButton2.Checked) { $script:formState.RbSelection = "Filename" }
+                if ($RadioButton3.Checked) { $script:formState.RbSelection = "Custom" }
+                $script:formState.CustomText = $TextBox.Text
+
+                try
+                {
+                    $script:formState.FontSize = [double]$NumericUpDown.Value
+                    if ($script:formState.FontSize -le 0) { $script:formState.FontSize = 24 }
+                }
+                catch { $script:formState.FontSize = 24 }
+                $script:formState.IsBold = $BoldCheckbox.Checked
+                $script:formState.IsItalic = $ItalicCheckbox.Checked
+                $SelectForm.Close()
             }
-        )
+            else
+            {
+                [System.Windows.Forms.MessageBox]::Show("No files selected.", "Warning",
+                    [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            }
+        })
 
-        if ($script:formState.SelectedFiles.Count -gt 0) {
-            $script:formState.UseTransparentEffect = $TransparentCheckbox.Checked
-            if ($RadioButton1.Checked) { $script:formState.RbSelection = "Hidden" }
-            if ($RadioButton2.Checked) { $script:formState.RbSelection = "Filename" }
-            if ($RadioButton3.Checked) { $script:formState.RbSelection = "Custom" }
-            $script:formState.CustomText = $TextBox.Text
+    [xml]$SyncHash.XamlHelpPopup = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Help" Height="340" Width="450" WindowStartupLocation="CenterScreen">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <RichTextBox x:Name="MyRichTextBox" Grid.Row="0" Margin="5" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+            <FlowDocument>
+                <FlowDocument.Resources>
+                    <Style TargetType="{x:Type Paragraph}">
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </FlowDocument.Resources>
+                <Paragraph>
+                    <Run Text="Hopefully selection dialog is self explanatory. :-)"/><LineBreak/>
+                    <Run Text=" "/>
+                </Paragraph>
+                <Paragraph>
+                    <Run Text="Commands for after video(s) are playing:"/><LineBreak/>
+                </Paragraph>    
+                <Paragraph TextAlignment="Left" FontFamily="Consolas">
+                    <Bold>
+                        <Run Text="Button            : Key : Action" TextDecorations="Underline"/><LineBreak/>
+                    </Bold>
+                    <Run Text="X                 : Esc : Exit"/><LineBreak/>
+                    <Run Text="Pause/Resume      :  P  : Pause/Resume Spinning"/><LineBreak/>
+                    <Run Text="Redo              :  R  : Reselect videos"/><LineBreak/>
+                    <Run Text="Random Axis       :  A  : Change Rotation Axis"/><LineBreak/>
+                    <Run Text="Hide Controls     :  H  : Hide/Show Controls"/><LineBreak/>
+                    <Run Text="Left Arrow        :  &#x2190;  : Slow Down Spinning"/><LineBreak/>
+                    <Run Text="Right Arrow       :  &#x2192;  : Speed Up Spinning"/><LineBreak/><LineBreak/>
+                    <Run Text="*Click wheel to Pause/Resume"/><LineBreak/>
+                </Paragraph>
+            </FlowDocument>
+        </RichTextBox>
+        
+        <Button x:Name="OKButton" Grid.Row="1" Content="OK" HorizontalAlignment="Right" Width="80" Height="30" Margin="0,10,0,0"/>
+    </Grid>
+</Window>
+"@
 
-            try {
-                $script:formState.FontSize = [double]$NumericUpDown.Value
-                if ($script:formState.FontSize -le 0) { $script:formState.FontSize = 24 }
-            } catch { $script:formState.FontSize = 24 }
-            $script:formState.IsBold   = $BoldCheckbox.Checked
-            $script:formState.IsItalic = $ItalicCheckbox.Checked
-            $SelectForm.Close()
-        } else {
-            [System.Windows.Forms.MessageBox]::Show("No files selected.", "Warning",
-                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
-        }
-    })
+    $SelectForm.KeyPreview = $True
+    $SelectForm.Add_KeyDown({
+            param($sender, $e)
+            switch ($e.KeyCode)
+            {
+                "Escape" { $window.Close() }
+                "F1"
+                {
+                    $ReaderPopup = (New-Object System.Xml.XmlNodeReader $SyncHash.XamlHelpPopup)
+                    $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+                    $OkButton = $PopupWindow.FindName("OKButton")
+                    $OkButton.Add_Click({
+                            $PopupWindow.Close()
+                        })
+                    $PopupWindow.ShowDialog() | Out-Null
+                }
+            }
+        })
 
     $null = $SelectForm.ShowDialog()
     $SelectForm.Dispose()
 
-    if ($script:formState.SelectedFiles.Count -eq 0) {
+    if ($script:formState.SelectedFiles.Count -eq 0)
+    {
         Write-Host "No files were selected or form was closed. Exiting."
         break
     }
@@ -401,7 +488,7 @@ while ($true) {
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Rotating Pie"
+        Title="Rotating Wagon Wheel - Media Element"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent">
   <Grid x:Name="MainGrid">
@@ -409,7 +496,7 @@ while ($true) {
       <Viewport3D.Camera>
         <PerspectiveCamera Position="0,0,8" LookDirection="0,0,-1" UpDirection="0,1,0" FieldOfView="60"/>
       </Viewport3D.Camera>
-      <ModelVisual3D x:Name="PieContainer">
+      <ModelVisual3D x:Name="WagonWheelSurfaceContainer">
         <ModelVisual3D.Content>
           <Model3DGroup>
             <AmbientLight Color="Gray"/>
@@ -446,7 +533,7 @@ while ($true) {
 </Window>
 "@
 
-    $fontSz  = 24
+    $fontSz = 24
     try { if ($script:formState.FontSize -and [double]$script:formState.FontSize -gt 0) { $fontSz = [double]$script:formState.FontSize } } catch { }
 
     $SyncLock = New-Object object
@@ -455,20 +542,21 @@ while ($true) {
         Paused = $false; ControlsHidden = $false; RedoClicked = $false
         RbSelection = $script:formState.RbSelection; CustomText = $script:formState.CustomText; TextColor = $script:formState.TextColor;
         FontSize = $fontSz; FontFamily = $script:formState.FontFamily; IsBold = $script:formState.IsBold; IsItalic = $script:formState.IsItalic;
-        PlayerState = @{}; ImageExtensions = @(".bmp",".jpeg",".jpg",".png",".tif",".tiff",".gif",".wmp",".ico")
+        PlayerState = @{}; ImageExtensions = @(".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".gif", ".wmp", ".ico")
         GlobalCounter = -1; ImageHoldSeconds = 10
         Window = $null; ImageControls = (New-Object 'System.Collections.Generic.List[System.Windows.Controls.MediaElement]')
         OverlayTextBlocks = (New-Object 'System.Collections.Generic.List[System.Windows.Controls.TextBlock]'); SliceOuterFaceModels = $null
         GetNextIndex = $null; ApplyOverlayFor = $null; AssignNext = $null; HandleMediaFailure = $null
         animX = $null; animY = $null; AxisAngleX = $null; AxisAngleY = $null
         pauseButton = $null; randomAxisButton = $null; slowDownButton = $null; speedUpButton = $null; redoButton = $null; hideControlsButton = $null; closeButton = $null
+        XamlHelpPopup = $SyncHash.XamlHelpPopup
     }
 
     $reader = New-Object System.Xml.XmlNodeReader $xaml
     $window = [Windows.Markup.XamlReader]::Load($reader)
     $SyncHash.Window = $window
 
-    $pieContainer = $window.FindName("PieContainer")
+    $WagonWheelSurfaceContainer = $window.FindName("WagonWheelSurfaceContainer")
 
     $primaryScreen = [System.Windows.Forms.Screen]::PrimaryScreen
     $window.Width = $primaryScreen.WorkingArea.Width
@@ -478,8 +566,8 @@ while ($true) {
     
     $materialType = if ($SyncHash.UseTransparentEffect) { [System.Windows.Media.Media3D.EmissiveMaterial] } else { [System.Windows.Media.Media3D.DiffuseMaterial] }
     $numberOfSlices = 8
-    $sliceAngle = 360.0 / $numberOfSlices
-    $sliceOuterFaceModels = New-Object System.Collections.Generic.List[System.Windows.Media.Media3D.GeometryModel3D]
+    $SurfaceAngle = 360.0 / $numberOfSlices
+    $SurfaceOuterFaceModels = New-Object System.Collections.Generic.List[System.Windows.Media.Media3D.GeometryModel3D]
 
     # --- Dynamic Radius Calculation ---
     # Calculate the radius so the wheel's diameter fits within a percentage of the screen's working height.
@@ -490,10 +578,11 @@ while ($true) {
     $desiredHeightPercentage = 0.50 # Use 50% of the viewport height
     $dynamicRadius = ($visibleHeightAtOrigin * $desiredHeightPercentage) / 2.0
 
-    for ($i = 0; $i -lt $numberOfSlices; $i++) {
-        $startAngle = $i * $sliceAngle
-        $sliceParts = New-PieSliceModel -radius $dynamicRadius -startAngleDeg $startAngle -sliceAngleDeg $sliceAngle
-        $sliceOuterFaceModels.Add($sliceParts.OuterFaceModel)
+    for ($i = 0; $i -lt $numberOfSlices; $i++)
+    {
+        $startAngle = $i * $SurfaceAngle
+        $SurfaceParts = New-WagonWheelSurfaceModel -radius $dynamicRadius -startAngleDeg $startAngle -sliceAngleDeg $SurfaceAngle
+        $SurfaceOuterFaceModels.Add($SurfaceParts.OuterFaceModel)
         
         # Use a MediaElement for both images and videos
         $mediaElement = New-Object System.Windows.Controls.MediaElement -Property @{
@@ -519,10 +608,10 @@ while ($true) {
         $material.Brush = $visualBrush
         if ($SyncHash.UseTransparentEffect) { $material.Color = [System.Windows.Media.Colors]::White }
 
-        $sliceParts.OuterFaceModel.Material = $material
-        $pieContainer.Content.Children.Add($sliceParts.FullSliceModel)
+        $SurfaceParts.OuterFaceModel.Material = $material
+        $WagonWheelSurfaceContainer.Content.Children.Add($SurfaceParts.FullSliceModel)
     }
-    $SyncHash.SliceOuterFaceModels = $sliceOuterFaceModels
+    $SyncHash.SliceOuterFaceModels = $SurfaceOuterFaceModels
 
     $GetNextIndex = {
         $count = $SyncHash.SelectedFiles.Count
@@ -535,32 +624,35 @@ while ($true) {
     $SyncHash.GetNextIndex = $GetNextIndex
 
     $ApplyOverlayFor = {
-        param($sliceIndex, [Uri]$uriOrNull)
-        $overlay = $SyncHash.OverlayTextBlocks[$sliceIndex]
-        switch ($SyncHash.RbSelection) {
+        param($SurfaceIndex, [Uri]$uriOrNull)
+        $overlay = $SyncHash.OverlayTextBlocks[$SurfaceIndex]
+        switch ($SyncHash.RbSelection)
+        {
             "Hidden"   { $overlay.Visibility = 'Collapsed' }
             "Filename" { if ($uriOrNull) { $overlay.Text = [System.IO.Path]::GetFileName($uriOrNull.LocalPath) }; $overlay.Visibility = 'Visible' }
             "Custom"   { $overlay.Text = $SyncHash.CustomText; $overlay.Visibility = 'Visible' }
         }
-        if ($SyncHash.RbSelection -ne "Hidden") {
+        if ($SyncHash.RbSelection -ne "Hidden")
+        {
             $mediaColor = [System.Windows.Media.Color]::FromArgb($SyncHash.TextColor.A, $SyncHash.TextColor.R, $SyncHash.TextColor.G, $SyncHash.TextColor.B)
             $overlay.Foreground = New-Object System.Windows.Media.SolidColorBrush($mediaColor)
             $overlay.FontFamily = New-Object System.Windows.Media.FontFamily($SyncHash.FontFamily)
             $overlay.FontSize = $SyncHash.FontSize
             if ($SyncHash.IsBold)  { $overlay.FontWeight = 'Bold' }
-            if ($SyncHash.IsItalic){ $overlay.FontStyle  = 'Italic' }
+            if ($SyncHash.IsItalic){ $overlay.FontStyle = 'Italic' }
         }
     }
     $SyncHash.ApplyOverlayFor = $ApplyOverlayFor
 
     $AssignNext = {
-        param($sliceIndex)
-        if ($sliceIndex -lt 0) { return }
-        $mediaElement = $SyncHash.ImageControls[$sliceIndex]
+        param($SurfaceIndex)
+        if ($SurfaceIndex -lt 0) { return }
+        $mediaElement = $SyncHash.ImageControls[$SurfaceIndex]
 
         $st = $SyncHash.PlayerState[$mediaElement.GetHashCode()]
-        if ($st) {
-            if ($st.ImageTimer)    { $st.ImageTimer.Stop();    $st.ImageTimer    = $null }
+        if ($st)
+        {
+            if ($st.ImageTimer)    { $st.ImageTimer.Stop(); $st.ImageTimer = $null }
             if ($st.RecoveryTimer) { $st.RecoveryTimer.Stop(); $st.RecoveryTimer = $null }
         }
         $mediaElement.Stop()
@@ -576,11 +668,13 @@ while ($true) {
             $me = $sender; $sIndex = $me.Tag; $pState = $SyncHash.PlayerState[$me.GetHashCode()]
             if (-not $pState) { return }
             $pState.IsFailed = $false; $pState.PlaybackStopwatch.Restart(); $me.Visibility = 'Visible'
-            if ($pState.IsImage) {
+            if ($pState.IsImage)
+            {
                 $me.Pause(); if ($pState.ImageTimer) { $pState.ImageTimer.Stop() }
                 $t = New-Object System.Windows.Threading.DispatcherTimer; $t.Interval = [TimeSpan]::FromSeconds($SyncHash.ImageHoldSeconds); $t.Tag = $sIndex
                 $t.Add_Tick({ $timer = $args[0]; $idx = $timer.Tag; $timer.Stop(); & $SyncHash.AssignNext $idx }); $pState.ImageTimer = $t; $t.Start()
-            } elseif (-not $me.NaturalDuration.HasTimeSpan) { & $SyncHash.HandleMediaFailure -SliceIndex $sIndex -Reason "No duration found (silent failure)." }
+            }
+            elseif (-not $me.NaturalDuration.HasTimeSpan) { & $SyncHash.HandleMediaFailure -SliceIndex $sIndex -Reason "No duration found (silent failure)." }
         }
         $mediaEndedHandler = {
             $me = $args[0]; $sIndex = $me.Tag; if ($sIndex -lt 0) { return }
@@ -591,7 +685,8 @@ while ($true) {
 
 
         $tries = 0; $maxTries = [Math]::Max(1, $SyncHash.SelectedFiles.Count)
-        do {
+        do
+        {
             $next = & $SyncHash.GetNextIndex
             if ($next -eq $null) { return }
             $filePath = $SyncHash.SelectedFiles[$next]
@@ -601,10 +696,11 @@ while ($true) {
             $tries++
         } while ($sameAsCurrent -and $tries -lt $maxTries)
 
-        & $SyncHash.ApplyOverlayFor $sliceIndex $uri
+        & $SyncHash.ApplyOverlayFor $SurfaceIndex $uri
 
         $ext = [System.IO.Path]::GetExtension($uri.LocalPath).ToLower()
-        if (-not $st) {
+        if (-not $st)
+        {
             $st = @{ CurrentPath = $null; IsImage = $false; ImageTimer = $null; IsFailed = $false; RecoveryTimer = $null; PlaybackStopwatch = New-Object System.Diagnostics.Stopwatch }
             $SyncHash.PlayerState[$mediaElement.GetHashCode()] = $st
         }
@@ -613,7 +709,7 @@ while ($true) {
         $st.MediaOpenedHandler = $mediaOpenedHandler.GetNewClosure()
         $st.MediaEndedHandler = $mediaEndedHandler.GetNewClosure()
         $st.MediaFailedHandler = $mediaFailedHandler.GetNewClosure()
-        $mediaElement.Tag = $sliceIndex
+        $mediaElement.Tag = $SurfaceIndex
         $mediaElement.Add_MediaOpened($st.MediaOpenedHandler)
         $mediaElement.Add_MediaEnded($st.MediaEndedHandler)
         $mediaElement.Add_MediaFailed($st.MediaFailedHandler)
@@ -625,26 +721,26 @@ while ($true) {
     $SyncHash.AssignNext = $AssignNext
 
     $HandleMediaFailure = {
-        param($SliceIndex, [string]$Reason)
-        if ($SliceIndex -lt 0) { return }
-        $mediaElement = $SyncHash.ImageControls[$SliceIndex]; $st = $SyncHash.PlayerState[$mediaElement.GetHashCode()]
+        param($SurfaceIndex, [string]$Reason)
+        if ($SurfaceIndex -lt 0) { return }
+        $mediaElement = $SyncHash.ImageControls[$SurfaceIndex]; $st = $SyncHash.PlayerState[$mediaElement.GetHashCode()]
         if ($st -and $st.IsFailed) { return }; if (-not $st) { return }
         $st.IsFailed = $true
         
         $mediaElement.Visibility = 'Collapsed'
-        $overlay = $SyncHash.OverlayTextBlocks[$SliceIndex]
+        $overlay = $SyncHash.OverlayTextBlocks[$SurfaceIndex]
         $fileName = if ($st.CurrentPath) { [System.IO.Path]::GetFileName($st.CurrentPath) } else { "media" }
         $overlay.Text = "ERROR playing:`n$fileName`n`n$Reason";
         $overlay.Foreground = [System.Windows.Media.Brushes]::Red; $overlay.Visibility = 'Visible'
 
         if ($st.RecoveryTimer) { $st.RecoveryTimer.Stop() }
         $recoveryTimer = New-Object System.Windows.Threading.DispatcherTimer; $recoveryTimer.Interval = [TimeSpan]::FromSeconds(5)
-        $recoveryTimer.Tag = $SliceIndex
+        $recoveryTimer.Tag = $SurfaceIndex
         $recoveryTimer.Add_Tick({
-            $timer = $args[0]; $sIndex = $timer.Tag; $timer.Stop();
-            $s2 = $SyncHash.PlayerState[$SyncHash.ImageControls[$sIndex].GetHashCode()]; if ($s2) { $s2.IsFailed = $false }
-            & $SyncHash.AssignNext $sIndex
-        });
+                $timer = $args[0]; $sIndex = $timer.Tag; $timer.Stop();
+                $s2 = $SyncHash.PlayerState[$SyncHash.ImageControls[$sIndex].GetHashCode()]; if ($s2) { $s2.IsFailed = $false }
+                & $SyncHash.AssignNext $sIndex
+            });
         $st.RecoveryTimer = $recoveryTimer; $recoveryTimer.Start()
     }
     $SyncHash.HandleMediaFailure = $HandleMediaFailure
@@ -664,23 +760,26 @@ while ($true) {
     $SyncHash.closeButton.Add_Click({ $window.Close() })
 
     $SyncHash.pauseButton.Add_Click({
-        if ($SyncHash.Paused) {
-            $SyncHash.animX.From = $SyncHash.AxisAngleX.Angle; $SyncHash.AxisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $SyncHash.animX)
-            $SyncHash.animY.From = $SyncHash.AxisAngleY.Angle; $SyncHash.AxisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $SyncHash.animY)
-            $SyncHash.pauseButton.Content = "Pause"; $SyncHash.Paused = $false
-        } else {
-            $currentAngleX = $SyncHash.AxisAngleX.Angle; $currentAngleY = $SyncHash.AxisAngleY.Angle
-            $SyncHash.AxisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
-            $SyncHash.AxisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
-            $SyncHash.AxisAngleX.Angle = $currentAngleX; $SyncHash.AxisAngleY.Angle = $currentAngleY
-            $SyncHash.pauseButton.Content = "Resume"; $SyncHash.Paused = $true
-        }
-    })
+            if ($SyncHash.Paused)
+            {
+                $SyncHash.animX.From = $SyncHash.AxisAngleX.Angle; $SyncHash.AxisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $SyncHash.animX)
+                $SyncHash.animY.From = $SyncHash.AxisAngleY.Angle; $SyncHash.AxisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $SyncHash.animY)
+                $SyncHash.pauseButton.Content = "Pause"; $SyncHash.Paused = $false
+            }
+            else
+            {
+                $currentAngleX = $SyncHash.AxisAngleX.Angle; $currentAngleY = $SyncHash.AxisAngleY.Angle
+                $SyncHash.AxisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
+                $SyncHash.AxisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
+                $SyncHash.AxisAngleX.Angle = $currentAngleX; $SyncHash.AxisAngleY.Angle = $currentAngleY
+                $SyncHash.pauseButton.Content = "Resume"; $SyncHash.Paused = $true
+            }
+        })
 
     $SyncHash.randomAxisButton.Add_Click({
-        $SyncHash.AxisAngleX.Axis = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
-        $SyncHash.AxisAngleY.Axis = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
-    })
+            $SyncHash.AxisAngleX.Axis = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
+            $SyncHash.AxisAngleY.Axis = New-Object System.Windows.Media.Media3D.Vector3D((Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0), (Get-Random -Minimum -1.0 -Maximum 1.0))
+        })
 
     $changeSpeed = {
         param($multiplier)
@@ -689,7 +788,8 @@ while ($true) {
         if ($newDurationX.TotalSeconds -lt 0.5) { $newDurationX = [TimeSpan]::FromSeconds(0.5) }
         if ($newDurationY.TotalSeconds -lt 0.5) { $newDurationY = [TimeSpan]::FromSeconds(0.5) }
         $SyncHash.animX.Duration = $newDurationX; $SyncHash.animY.Duration = $newDurationY
-        if (-not $SyncHash.Paused) {
+        if (-not $SyncHash.Paused)
+        {
             $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
             Start-Sleep -Milliseconds 50
             $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
@@ -701,43 +801,56 @@ while ($true) {
     $SyncHash.redoButton.Add_Click({ $SyncHash.RedoClicked = $true; $SyncHash.Window.Close() })
 
     $SyncHash.hideControlsButton.Add_Click({
-        $controlsPanel = $window.FindName("controlsPanel")
-        if ($SyncHash.ControlsHidden) { $controlsPanel.Visibility = 'Visible'; $SyncHash.ControlsHidden = $false }
-        else { $controlsPanel.Visibility = 'Collapsed'; $SyncHash.ControlsHidden = $true }
-    })
+            $controlsPanel = $window.FindName("controlsPanel")
+            if ($SyncHash.ControlsHidden) { $controlsPanel.Visibility = 'Visible'; $SyncHash.ControlsHidden = $false }
+            else { $controlsPanel.Visibility = 'Collapsed'; $SyncHash.ControlsHidden = $true }
+        })
 
     $window.Add_KeyDown({
-        param($sender, $e)
-        switch ($e.Key) {
-            "Escape" { $window.Close() }
-            "P"      { $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "A"      { $SyncHash.randomAxisButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "R"      { $SyncHash.redoButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "H"      { $SyncHash.hideControlsButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "Left"   { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-            "Right"  { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
-        }
-    })
+            param($sender, $e)
+            switch ($e.Key)
+            {
+                "Escape" { $window.Close() }
+                "P"      { $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "A"      { $SyncHash.randomAxisButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "R"      { $SyncHash.redoButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "H"      { $SyncHash.hideControlsButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "Left"   { $SyncHash.slowDownButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "Right"  { $SyncHash.speedUpButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) }
+                "F1"
+                {
+                    $ReaderPopup = (New-Object System.Xml.XmlNodeReader $SyncHash.XamlHelpPopup)
+                    $PopupWindow = [Windows.Markup.XamlReader]::Load($ReaderPopup)
+                    $OkButton = $PopupWindow.FindName("OKButton")
+                    $OkButton.Add_Click({
+                            $PopupWindow.Close()
+                        })
+                    $PopupWindow.ShowDialog() | Out-Null
+                }
+            }
+        })
     $mainGrid = $window.FindName("MainGrid")
     $mainGrid.Add_MouseDown({ $SyncHash.pauseButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) })
 
     $window.Add_Closed({
-        foreach ($imageControl in $SyncHash.ImageControls) {
-            $st = $SyncHash.PlayerState[$imageControl.GetHashCode()];
-            if ($st) {
-                if ($st.ImageTimer) { $st.ImageTimer.Stop() }
-                if ($st.RecoveryTimer) { $st.RecoveryTimer.Stop() }
-                if ($st.MediaOpenedHandler) { $imageControl.remove_MediaOpened($st.MediaOpenedHandler) }
-                if ($st.MediaEndedHandler)  { $imageControl.remove_MediaEnded($st.MediaEndedHandler) }
-                if ($st.MediaFailedHandler) { $imageControl.remove_MediaFailed($st.MediaFailedHandler) }
+            foreach ($imageControl in $SyncHash.ImageControls)
+            {
+                $st = $SyncHash.PlayerState[$imageControl.GetHashCode()];
+                if ($st)
+                {
+                    if ($st.ImageTimer) { $st.ImageTimer.Stop() }
+                    if ($st.RecoveryTimer) { $st.RecoveryTimer.Stop() }
+                    if ($st.MediaOpenedHandler) { $imageControl.remove_MediaOpened($st.MediaOpenedHandler) }
+                    if ($st.MediaEndedHandler)  { $imageControl.remove_MediaEnded($st.MediaEndedHandler) }
+                    if ($st.MediaFailedHandler) { $imageControl.remove_MediaFailed($st.MediaFailedHandler) }
+                }
+                $imageControl.Source = $null
             }
-            $imageControl.Source = $null
-        }
-        $axisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
-        $axisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
-    })
+            $axisAngleX.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
+            $axisAngleY.BeginAnimation([System.Windows.Media.Media3D.AxisAngleRotation3D]::AngleProperty, $null)
+        })
 
-    for ($i=0; $i -lt $SyncHash.OverlayTextBlocks.Count; $i++) { & $SyncHash.ApplyOverlayFor $i $null }
+    for ($i = 0; $i -lt $SyncHash.OverlayTextBlocks.Count; $i++) { & $SyncHash.ApplyOverlayFor $i $null }
 
     $null = $window.ShowDialog()
     if (-not $SyncHash.RedoClicked) { break }
