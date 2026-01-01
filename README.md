@@ -28,7 +28,17 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Scans selected files or folders to extract and display detailed metadata, including EXIF data for images and technical properties for other files.
   - **Dependencies**: PowerShell with .NET Framework access.
 
+### Master Visualizer
+
+- **`Show-MasterVisualizer.ps1`**
+  - **Description**: A master 3D media visualizer combining multiple display styles and rendering engines. It intelligently detects FFmpeg availability and provides a unified GUI for all visualizations.
+  - **Dependencies**: PowerShell with .NET/WPF access. FFmpeg/ffprobe are optional but recommended.
+
 ### Media Viewers (FFmpeg-Based)
+
+- **`Show-FfmpegVisualizer.ps1`**
+  - **Description**: A single script that combines all FFmpeg-based 3D visualizers, selectable via a GUI.
+  - **Dependencies**: `ffmpeg.exe`, `ffprobe.exe`.
 
 - **`Show-RotatingImagesVideosCubeFfmpeg.ps1`**
   - **Description**: Displays selected images and videos on the faces of a rotating 3D cube using FFmpeg for broad format support.
@@ -94,6 +104,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Description**: Displays media on a rotating 3D star-shaped object. Uses FFmpeg for broad format support.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
 
+- **`Show-ImagesVideosReindeerSleighFfmpeg.ps1`**
+  - **Description**: A festive display of 4 reindeer pulling a sleigh, all playing media. Uses FFmpeg for broad video format support.
+  - **Dependencies**: `ffmpeg.exe`, `ffprobe.exe`.
+
 - **`Show-ScrollingImagesVideosHorizontalFfmpeg.ps1`**
   - **Description**: Creates a continuous horizontal-scrolling display of selected images and videos. Uses FFmpeg for video decoding.
   - **Dependencies**: `ffmpeg.exe`, `ffplay.exe`.
@@ -127,6 +141,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
   - **Dependencies**: `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe`.
 
 ### Media Viewers (MediaElement-Based)
+
+- **`Show-MediaElementVisualizer.ps1`**
+  - **Description**: A single script that combines all MediaElement-based 3D visualizers, selectable via a GUI.
+  - **Dependencies**: PowerShell with .NET/WPF access.
 
 - **`Show-RotatingImagesVideosCubeMediaElement.ps1`**
   - **Description**: Displays selected images and videos on a rotating 3D cube using the native Windows MediaElement.
@@ -170,6 +188,10 @@ The main entry point is `Show-ScriptLauncher.ps1`, which provides a user-friendl
 
 - **`Show-ImagesVideosPulsingStarMediaElement.ps1`**
   - **Description**: Displays media on a 3D object resembling a pulsing star, made of a central sphere and multiple cones. Uses the native Windows MediaElement.
+  - **Dependencies**: PowerShell with .NET/WPF access.
+
+- **`Show-ImagesVideosReindeerSleighMediaElement.ps1`**
+  - **Description**: A festive display of 4 reindeer pulling a sleigh, all playing media.
   - **Dependencies**: PowerShell with .NET/WPF access.
 
 - **`Show-ImagesVideosMediaFlowFunnelMediaElement.ps1`**
