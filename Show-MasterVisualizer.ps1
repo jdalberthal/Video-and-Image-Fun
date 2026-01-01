@@ -227,8 +227,6 @@ while ($true) {
 
     $BrowseButton.Add_Click({
         $FolderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-        $initialPath = 'C:\Users\jdalb\Videos\Test'
-        $FolderBrowser.SelectedPath = $initialPath
         if ($FolderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             $SelectedPath = $FolderBrowser.SelectedPath; $FolderPathTextBox.Text = $SelectedPath; $DataGridView.Rows.Clear()
             $ImageExtensions = "*.bmp", "*.jpeg", "*.jpg", "*.png", "*.tif", "*.tiff", "*.gif", "*.wmp", "*.ico"
